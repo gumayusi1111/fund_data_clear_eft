@@ -1,323 +1,296 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-ETF 统一更新脚本
-1. 自动执行周更新（如果有新数据）
-2. 自动执行日更新（每天执行）
-3. 使用分离的日志系统
-4. 统一的错误处理和状态报告
+统一ETF更新器
+一键执行日更和周更的ETF数据同步
+支持test模式验证系统状态
 """
 
 import os
 import sys
-import subprocess
 import json
+import subprocess
+import logging
 from datetime import datetime
 from pathlib import Path
 
-# 添加config目录到路径
-config_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config')
-sys.path.insert(0, config_dir)
+# 设置项目根目录
+PROJECT_ROOT = Path(__file__).parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-try:
-    import importlib.util
-    # 导入日志配置
-    logger_config_path = os.path.join(config_dir, 'logger_config.py')
-    spec = importlib.util.spec_from_file_location("logger_config", logger_config_path)
-    logger_config_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(logger_config_module)
-    setup_logger = logger_config_module.setup_logger
-    
-    # 设置统一更新日志
-    logger = setup_logger("etf_unified", "general")
-except ImportError as e:
-    print(f"警告：无法导入日志配置: {e}")
-    logger = None
+# 导入配置
+from config.logger_config import setup_system_logger
+from config.hash_manager import HashManager
 
-
-def load_config():
-    """加载配置文件"""
-    config_path = os.path.join(config_dir, 'config.json')
-    try:
+class UnifiedETFUpdater:
+    def __init__(self):
+        """初始化统一更新器"""
+        self.project_root = PROJECT_ROOT
+        self.logger = setup_system_logger()
+        
+        # 加载配置
+        config_path = self.project_root / "config" / "config.json"
         with open(config_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"加载配置失败: {e}")
-        return {}
-
-
-def log_message(message: str, level: str = "INFO"):
-    """记录日志消息"""
-    if logger:
-        if level == "ERROR":
-            logger.error(message)
-        elif level == "WARNING":
-            logger.warning(message)
-        else:
-            logger.info(message)
-    
-    # 同时输出到控制台
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] {message}")
-
-
-def run_weekly_update() -> bool:
-    """运行周更新"""
-    log_message("🗓️ 开始执行周更新...")
-    
-    try:
-        config = load_config()
-        weekly_dir = config.get("baidu_netdisk", {}).get("weekly_local_path", "./ETF周更")
+            self.config = json.load(f)
         
-        # 切换到周更目录执行脚本
-        weekly_script = os.path.join(weekly_dir, "etf_auto_sync.py")
+        # 初始化哈希管理器 - 使用绝对路径
+        hash_manager_path = self.project_root / "config" / "hash_manager.py"
+        hash_config_path = self.project_root / "config" / "file_hashes.json"
+        self.hash_manager = HashManager(str(hash_config_path))
         
-        if not os.path.exists(weekly_script):
-            log_message(f"❌ 周更脚本不存在: {weekly_script}", "ERROR")
-            return False
+        self.logger.info("统一ETF更新器初始化完成")
         
-        # 执行周更脚本
-        result = subprocess.run(
-            ["python", "etf_auto_sync.py"],
-            cwd=weekly_dir,
-            capture_output=True,
-            text=True,
-            timeout=1800  # 30分钟超时
-        )
+    def run_daily_update(self):
+        """执行日更流程"""
+        self.logger.info("=" * 50)
+        self.logger.info("开始执行ETF日更流程")
+        self.logger.info("=" * 50)
         
-        if result.returncode == 0:
-            log_message("✅ 周更新执行完成")
-            # 记录重要输出
-            if result.stdout:
-                lines = result.stdout.strip().split('\n')
-                for line in lines[-10:]:  # 显示最后10行重要信息
-                    if any(keyword in line for keyword in ['✓', '完成', '成功', '找到', '处理']):
-                        log_message(f"  {line}")
-            return True
-        else:
-            log_message(f"❌ 周更新执行失败: {result.stderr}", "ERROR")
-            return False
+        try:
+            # 执行日更同步脚本
+            daily_script = self.project_root / "ETF日更" / "auto_daily_sync.py"
             
-    except subprocess.TimeoutExpired:
-        log_message("❌ 周更新执行超时", "ERROR")
-        return False
-    except Exception as e:
-        log_message(f"❌ 周更新执行异常: {e}", "ERROR")
-        return False
-
-
-def run_daily_update() -> bool:
-    """运行日更新"""
-    log_message("📅 开始执行日更新...")
-    
-    try:
-        config = load_config()
-        daily_dir = config.get("baidu_netdisk", {}).get("daily_local_path", "./ETF日更")
-        
-        # 切换到日更目录执行脚本
-        daily_script = os.path.join(daily_dir, "auto_daily_sync.py")
-        
-        if not os.path.exists(daily_script):
-            log_message(f"❌ 日更脚本不存在: {daily_script}", "ERROR")
-            return False
-        
-        # 执行日更脚本
-        result = subprocess.run(
-            ["python", "auto_daily_sync.py", "--mode", "daily"],
-            cwd=daily_dir,
-            capture_output=True,
-            text=True,
-            timeout=900  # 15分钟超时
-        )
-        
-        if result.returncode == 0:
-            log_message("✅ 日更新执行完成")
-            # 记录重要输出
-            if result.stdout:
-                lines = result.stdout.strip().split('\n')
-                for line in lines[-10:]:  # 显示最后10行重要信息
-                    if any(keyword in line for keyword in ['✓', '完成', '成功', '下载', '处理']):
-                        log_message(f"  {line}")
-            return True
-        else:
-            log_message(f"⚠️ 日更新执行结果: {result.stderr}", "WARNING")
-            # 日更新失败不一定是错误（可能是今天没有新数据）
-            if "没有今天的文件" in result.stderr or "非交易日" in result.stderr:
-                log_message("ℹ️ 今天没有新数据，这是正常情况")
+            if not daily_script.exists():
+                self.logger.error(f"日更脚本不存在: {daily_script}")
+                return False
+                
+            # 切换到日更目录执行脚本
+            daily_dir = self.project_root / "ETF日更"
+            
+            cmd = [sys.executable, "auto_daily_sync.py"]
+            result = subprocess.run(
+                cmd,
+                cwd=str(daily_dir),
+                capture_output=True,
+                text=True,
+                encoding='utf-8'
+            )
+            
+            if result.returncode == 0:
+                self.logger.info("✅ ETF日更完成")
+                self.logger.info("日更输出:")
+                for line in result.stdout.split('\n'):
+                    if line.strip():
+                        self.logger.info(f"  {line}")
                 return True
+            else:
+                self.logger.error("❌ ETF日更失败")
+                self.logger.error("错误输出:")
+                for line in result.stderr.split('\n'):
+                    if line.strip():
+                        self.logger.error(f"  {line}")
+                        
+                # 可能是非交易日或网络问题
+                if "没有找到" in result.stderr or "not found" in result.stderr.lower():
+                    self.logger.warning("⚠️  可能原因: 今天是非交易日或数据暂未更新")
+                
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"执行日更时发生异常: {str(e)}")
             return False
-            
-    except subprocess.TimeoutExpired:
-        log_message("❌ 日更新执行超时", "ERROR")
-        return False
-    except Exception as e:
-        log_message(f"❌ 日更新执行异常: {e}", "ERROR")
-        return False
-
-
-def check_system_status() -> dict:
-    """检查系统状态"""
-    log_message("🔍 检查系统状态...")
     
-    config = load_config()
-    status = {
-        "config_loaded": bool(config),
-        "weekly_dir_exists": False,
-        "daily_dir_exists": False,
-        "weekly_script_exists": False,
-        "daily_script_exists": False
-    }
-    
-    if config:
-        # 检查目录和脚本
-        weekly_dir = config.get("baidu_netdisk", {}).get("weekly_local_path", "./ETF周更")
-        daily_dir = config.get("baidu_netdisk", {}).get("daily_local_path", "./ETF日更")
+    def run_weekly_update(self):
+        """执行周更流程"""
+        self.logger.info("=" * 50)
+        self.logger.info("开始执行ETF周更流程")
+        self.logger.info("=" * 50)
         
-        status["weekly_dir_exists"] = os.path.exists(weekly_dir)
-        status["daily_dir_exists"] = os.path.exists(daily_dir)
-        status["weekly_script_exists"] = os.path.exists(os.path.join(weekly_dir, "etf_auto_sync.py"))
-        status["daily_script_exists"] = os.path.exists(os.path.join(daily_dir, "auto_daily_sync.py"))
+        try:
+            # 执行周更同步脚本
+            weekly_script = self.project_root / "ETF周更" / "etf_auto_sync.py"
+            
+            if not weekly_script.exists():
+                self.logger.error(f"周更脚本不存在: {weekly_script}")
+                return False
+                
+            # 切换到周更目录执行脚本
+            weekly_dir = self.project_root / "ETF周更"
+            
+            cmd = [sys.executable, "etf_auto_sync.py"]
+            result = subprocess.run(
+                cmd,
+                cwd=str(weekly_dir),
+                capture_output=True,
+                text=True,
+                encoding='utf-8'
+            )
+            
+            if result.returncode == 0:
+                self.logger.info("✅ ETF周更完成")
+                self.logger.info("周更输出:")
+                for line in result.stdout.split('\n'):
+                    if line.strip():
+                        self.logger.info(f"  {line}")
+                return True
+            else:
+                self.logger.error("❌ ETF周更失败")
+                self.logger.error("错误输出:")
+                for line in result.stderr.split('\n'):
+                    if line.strip():
+                        self.logger.error(f"  {line}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"执行周更时发生异常: {str(e)}")
+            return False
     
-    # 输出状态报告
-    log_message(f"  配置文件: {'✅' if status['config_loaded'] else '❌'}")
-    log_message(f"  周更目录: {'✅' if status['weekly_dir_exists'] else '❌'}")
-    log_message(f"  日更目录: {'✅' if status['daily_dir_exists'] else '❌'}")
-    log_message(f"  周更脚本: {'✅' if status['weekly_script_exists'] else '❌'}")
-    log_message(f"  日更脚本: {'✅' if status['daily_script_exists'] else '❌'}")
+    def run_status_analysis(self):
+        """运行状态分析"""
+        self.logger.info("=" * 50)
+        self.logger.info("开始执行ETF状态分析")
+        self.logger.info("=" * 50)
+        
+        try:
+            # 运行状态分析器 - 更新路径到scripts目录
+            analysis_script = self.project_root / "scripts" / "etf_status_analyzer.py"
+            
+            if not analysis_script.exists():
+                self.logger.error(f"状态分析脚本不存在: {analysis_script}")
+                return False
+            
+            cmd = [sys.executable, str(analysis_script)]
+            result = subprocess.run(
+                cmd,
+                cwd=str(self.project_root),
+                capture_output=True,
+                text=True,
+                encoding='utf-8'
+            )
+            
+            if result.returncode == 0:
+                self.logger.info("✅ ETF状态分析完成")
+                self.logger.info("分析结果:")
+                for line in result.stdout.split('\n'):
+                    if line.strip():
+                        self.logger.info(f"  {line}")
+                return True
+            else:
+                self.logger.error("❌ ETF状态分析失败")
+                self.logger.error("错误输出:")
+                for line in result.stderr.split('\n'):
+                    if line.strip():
+                        self.logger.error(f"  {line}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"执行状态分析时发生异常: {str(e)}")
+            return False
     
-    return status
-
+    def test_system_status(self):
+        """测试系统状态"""
+        self.logger.info("🔍 开始系统状态测试")
+        
+        # 检查目录结构
+        required_dirs = [
+            "ETF日更",
+            "ETF周更", 
+            "config",
+            "logs",
+            "scripts"
+        ]
+        
+        for dir_name in required_dirs:
+            dir_path = self.project_root / dir_name
+            if dir_path.exists():
+                self.logger.info(f"✅ 目录存在: {dir_name}")
+            else:
+                self.logger.error(f"❌ 目录缺失: {dir_name}")
+        
+        # 检查关键文件
+        required_files = [
+            "config/config.json",
+            "config/hash_manager.py",
+            "ETF日更/auto_daily_sync.py",
+            "ETF周更/etf_auto_sync.py",
+            "scripts/etf_status_analyzer.py"
+        ]
+        
+        for file_path in required_files:
+            full_path = self.project_root / file_path
+            if full_path.exists():
+                self.logger.info(f"✅ 文件存在: {file_path}")
+            else:
+                self.logger.error(f"❌ 文件缺失: {file_path}")
+        
+        # 检查配置文件
+        try:
+            self.logger.info(f"✅ 配置加载成功，包含 {len(self.config)} 个配置项")
+        except Exception as e:
+            self.logger.error(f"❌ 配置加载失败: {e}")
+        
+        # 检查日志系统
+        log_files = ["etf_sync.log", "etf_daily_sync.log", "etf_weekly_sync.log", "etf_lifecycle.log"]
+        logs_dir = self.project_root / "logs"
+        
+        for log_file in log_files:
+            log_path = logs_dir / log_file
+            if log_path.exists():
+                self.logger.info(f"✅ 日志文件存在: {log_file}")
+            else:
+                self.logger.info(f"ℹ️  日志文件将自动创建: {log_file}")
+        
+        self.logger.info("🔍 系统状态测试完成")
+    
+    def run_full_update(self):
+        """执行完整更新流程"""
+        start_time = datetime.now()
+        self.logger.info("🚀 开始执行完整ETF数据更新流程")
+        
+        results = {
+            'daily': False,
+            'weekly': False,
+            'analysis': False
+        }
+        
+        # 1. 执行日更
+        results['daily'] = self.run_daily_update()
+        
+        # 2. 执行周更
+        results['weekly'] = self.run_weekly_update()
+        
+        # 3. 运行状态分析
+        results['analysis'] = self.run_status_analysis()
+        
+        # 生成总结报告
+        end_time = datetime.now()
+        duration = end_time - start_time
+        
+        self.logger.info("=" * 60)
+        self.logger.info("📊 ETF数据更新完成总结")
+        self.logger.info("=" * 60)
+        self.logger.info(f"开始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(f"结束时间: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(f"总耗时: {duration}")
+        self.logger.info("")
+        self.logger.info("各模块执行结果:")
+        self.logger.info(f"  📈 日更流程: {'✅ 成功' if results['daily'] else '❌ 失败'}")
+        self.logger.info(f"  📊 周更流程: {'✅ 成功' if results['weekly'] else '❌ 失败'}")
+        self.logger.info(f"  🔍 状态分析: {'✅ 成功' if results['analysis'] else '❌ 失败'}")
+        
+        total_success = sum(results.values())
+        self.logger.info(f"")
+        self.logger.info(f"整体成功率: {total_success}/3 ({total_success/3*100:.1f}%)")
+        
+        if total_success == 3:
+            self.logger.info("🎉 所有流程执行成功！")
+        elif total_success >= 2:
+            self.logger.info("⚠️  大部分流程执行成功，请检查失败项")
+        else:
+            self.logger.error("❌ 大部分流程执行失败，请检查系统状态")
+        
+        return results
 
 def main():
     """主函数"""
-    log_message("🚀 ETF统一更新程序启动")
-    log_message(f"⏰ 执行时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    # 检查系统状态
-    status = check_system_status()
-    
-    if not all([status["config_loaded"], status["weekly_dir_exists"], 
-                status["daily_dir_exists"], status["weekly_script_exists"], 
-                status["daily_script_exists"]]):
-        log_message("❌ 系统状态检查失败，请确保所有组件都已正确设置", "ERROR")
-        return False
-    
-    log_message("✅ 系统状态检查通过")
-    
-    # 总体结果统计
-    results = {
-        "weekly": False,
-        "daily": False
-    }
-    
-    try:
-        # 1. 执行周更新（顺带更新，不管有没有新数据）
-        log_message("=" * 50)
-        results["weekly"] = run_weekly_update()
-        
-        # 2. 执行日更新（每天都要执行）
-        log_message("=" * 50)
-        results["daily"] = run_daily_update()
-        
-        # 3. 汇总结果
-        log_message("=" * 50)
-        log_message("📊 更新结果汇总:")
-        log_message(f"  周更新: {'✅ 成功' if results['weekly'] else '❌ 失败'}")
-        log_message(f"  日更新: {'✅ 成功' if results['daily'] else '❌ 失败'}")
-        
-        if all(results.values()):
-            log_message("🎉 所有更新任务完成！")
-            return True
-        elif results["daily"]:
-            log_message("⚠️ 日更新成功，周更新失败（可能无新数据）")
-            return True
-        else:
-            log_message("❌ 更新过程中出现问题")
-            return False
-            
-    except KeyboardInterrupt:
-        log_message("⚠️ 用户中断操作", "WARNING")
-        return False
-    except Exception as e:
-        log_message(f"❌ 执行过程中出现异常: {e}", "ERROR")
-        return False
-
-
-def test_system():
-    """测试系统连接和配置"""
-    log_message("🔧 执行系统测试...")
-    
-    # 检查系统状态
-    status = check_system_status()
-    
-    if not status["config_loaded"]:
-        log_message("❌ 测试失败：配置文件加载失败", "ERROR")
-        return False
-    
-    # 测试周更连接
-    log_message("📡 测试周更连接...")
-    try:
-        config = load_config()
-        weekly_dir = config.get("baidu_netdisk", {}).get("weekly_local_path", "./ETF周更")
-        
-        result = subprocess.run(
-            ["python", "etf_auto_sync.py", "test"],
-            cwd=weekly_dir,
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        
-        weekly_test_ok = result.returncode == 0
-        log_message(f"  周更连接: {'✅ 正常' if weekly_test_ok else '❌ 异常'}")
-        
-    except Exception as e:
-        log_message(f"  周更连接: ❌ 测试失败 - {e}")
-        weekly_test_ok = False
-    
-    # 测试日更连接
-    log_message("📡 测试日更连接...")
-    try:
-        daily_dir = config.get("baidu_netdisk", {}).get("daily_local_path", "./ETF日更")
-        
-        result = subprocess.run(
-            ["python", "auto_daily_sync.py", "--mode", "test"],
-            cwd=daily_dir,
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        
-        daily_test_ok = result.returncode == 0
-        log_message(f"  日更连接: {'✅ 正常' if daily_test_ok else '❌ 异常'}")
-        
-    except Exception as e:
-        log_message(f"  日更连接: ❌ 测试失败 - {e}")
-        daily_test_ok = False
-    
-    # 汇总测试结果
-    log_message("📋 测试结果汇总:")
-    log_message(f"  系统配置: {'✅' if all(status.values()) else '❌'}")
-    log_message(f"  周更连接: {'✅' if weekly_test_ok else '❌'}")
-    log_message(f"  日更连接: {'✅' if daily_test_ok else '❌'}")
-    
-    all_ok = all(status.values()) and weekly_test_ok and daily_test_ok
-    log_message(f"🏁 总体状态: {'✅ 系统正常' if all_ok else '❌ 需要检查'}")
-    
-    return all_ok
-
+    if len(sys.argv) > 1 and sys.argv[1] == "test":
+        # 测试模式
+        updater = UnifiedETFUpdater()
+        updater.test_system_status()
+    else:
+        # 正常更新模式
+        updater = UnifiedETFUpdater()
+        updater.run_full_update()
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='ETF统一更新脚本')
-    parser.add_argument('--mode', choices=['update', 'test'], default='update',
-                        help='运行模式: update(执行更新), test(测试系统)')
-    
-    args = parser.parse_args()
-    
-    if args.mode == 'test':
-        success = test_system()
-    else:
-        success = main()
-    
-    sys.exit(0 if success else 1) 
+    main() 

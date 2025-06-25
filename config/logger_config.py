@@ -9,6 +9,7 @@ import json
 import logging
 import logging.handlers
 from typing import Dict, Any
+from pathlib import Path
 
 
 def load_config() -> Dict[str, Any]:
@@ -36,85 +37,139 @@ def get_default_config() -> Dict[str, Any]:
     }
 
 
-def setup_logger(name: str = "etf_sync", log_type: str = "general") -> logging.Logger:
-    """
-    设置日志记录器
-    
-    Args:
-        name: 日志记录器名称
-        log_type: 日志类型 (daily, weekly, general)
-        
-    Returns:
-        配置好的日志记录器
-    """
-    config = load_config()
-    log_config = config.get("logging", {})
+def setup_logger(name, log_file, level=logging.INFO):
+    """设置日志记录器"""
+    # 确保日志目录存在
+    log_dir = Path(log_file).parent
+    log_dir.mkdir(parents=True, exist_ok=True)
     
     # 创建日志记录器
-    logger_name = f"{name}_{log_type}" if log_type != "general" else name
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(getattr(logging, log_config.get("level", "INFO")))
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
     
-    # 避免重复添加处理器
+    # 避免重复添加handler
     if logger.handlers:
         return logger
     
-    # 创建格式化器
+    # 创建文件处理器
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setLevel(level)
+    
+    # 创建控制台处理器
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(level)
+    
+    # 创建格式器
     formatter = logging.Formatter(
-        log_config.get("format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
     )
     
-    # 文件处理器 - 根据类型选择不同的日志文件
-    log_base_dir = log_config.get("base_dir", "./logs")
-    log_files = log_config.get("files", {})
-    
-    if log_type in log_files:
-        log_filename = log_files[log_type]
-    else:
-        log_filename = log_files.get("general", "etf_sync.log")
-    
-    log_file_path = os.path.join(log_base_dir, log_filename)
-    log_dir = os.path.dirname(log_file_path)
-    
-    # 确保日志目录存在
-    if log_dir and not os.path.exists(log_dir):
-        os.makedirs(log_dir, exist_ok=True)
-    
-    # 使用RotatingFileHandler实现日志轮转
-    max_size = log_config.get("max_size_mb", 10) * 1024 * 1024  # 转换为字节
-    backup_count = log_config.get("backup_count", 5)
-    
-    file_handler = logging.handlers.RotatingFileHandler(
-        log_file_path,
-        maxBytes=max_size,
-        backupCount=backup_count,
-        encoding='utf-8'
-    )
     file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    console_handler.setFormatter(formatter)
     
-    # 控制台处理器
-    if log_config.get("console_output", True):
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
+    # 添加处理器到日志记录器
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
     
     return logger
 
 
+def get_project_root():
+    """获取项目根目录"""
+    current_file = Path(__file__)
+    # logger_config.py 在 config/ 目录下，需要向上一级找到项目根目录
+    project_root = current_file.parent.parent
+    return project_root
+
+
+def get_logger_paths():
+    """获取所有日志文件路径 - 按功能分类到不同子目录"""
+    project_root = get_project_root()
+    logs_dir = project_root / "logs"
+    
+    return {
+        'system': logs_dir / "system" / "etf_sync.log",              # 系统通用日志
+        'daily': logs_dir / "system" / "etf_daily_sync.log",        # 日更专用日志
+        'weekly': logs_dir / "system" / "etf_weekly_sync.log",      # 周更专用日志
+        'lifecycle': logs_dir / "lifecycle" / "etf_lifecycle.log",  # 生命周期管理日志
+    }
+
+
+def get_report_paths():
+    """获取报告文件路径"""
+    project_root = get_project_root()
+    logs_dir = project_root / "logs"
+    
+    return {
+        'status_reports': logs_dir / "reports" / "status",          # 状态分析报告
+        'lifecycle_reports': logs_dir / "reports" / "lifecycle",    # 生命周期报告
+    }
+
+
+def setup_system_logger():
+    """设置系统通用日志"""
+    paths = get_logger_paths()
+    return setup_logger('etf_system', paths['system'])
+
+
+def setup_daily_logger():
+    """设置日更专用日志"""
+    paths = get_logger_paths()
+    return setup_logger('etf_daily', paths['daily'])
+
+
+def setup_weekly_logger():
+    """设置周更专用日志"""
+    paths = get_logger_paths()
+    return setup_logger('etf_weekly', paths['weekly'])
+
+
+def setup_lifecycle_logger():
+    """设置ETF生命周期管理专用日志"""
+    paths = get_logger_paths()
+    return setup_logger('etf_lifecycle', paths['lifecycle'])
+
+
+def get_all_loggers():
+    """获取所有日志记录器"""
+    return {
+        'system': setup_system_logger(),
+        'daily': setup_daily_logger(),
+        'weekly': setup_weekly_logger(),
+        'lifecycle': setup_lifecycle_logger(),
+    }
+
+
 def log_system_info(logger: logging.Logger):
     """记录系统信息"""
-    import platform
-    import sys
-    from datetime import datetime
+    try:
+        import platform
+        import sys
+        
+        logger.info("=" * 50)
+        logger.info("系统信息:")
+        logger.info(f"  操作系统: {platform.system()} {platform.release()}")
+        logger.info(f"  Python版本: {sys.version}")
+        logger.info(f"  工作目录: {os.getcwd()}")
+        logger.info("=" * 50)
+        
+    except Exception as e:
+        logger.warning(f"无法获取系统信息: {e}")
+
+
+# 向后兼容的函数
+def setup_logger_old(name: str = "etf_sync", log_type: str = "general") -> logging.Logger:
+    """向后兼容的日志设置函数"""
+    logger_map = {
+        "general": setup_system_logger,
+        "daily": setup_daily_logger,
+        "weekly": setup_weekly_logger,
+        "lifecycle": setup_lifecycle_logger
+    }
     
-    logger.info("=" * 50)
-    logger.info("ETF数据同步系统启动")
-    logger.info(f"启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info(f"Python版本: {sys.version}")
-    logger.info(f"操作系统: {platform.system()} {platform.release()}")
-    logger.info(f"工作目录: {os.getcwd()}")
-    logger.info("=" * 50)
+    setup_func = logger_map.get(log_type, setup_system_logger)
+    return setup_func()
 
 
 if __name__ == "__main__":

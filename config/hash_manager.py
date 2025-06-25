@@ -15,13 +15,19 @@ from pathlib import Path
 class HashManager:
     """文件哈希管理器"""
     
-    def __init__(self, hash_file_path: str = "./config/file_hashes.json"):
+    def __init__(self, hash_file_path: str = None):
         """
         初始化哈希管理器
         
         Args:
-            hash_file_path: 哈希文件存储路径
+            hash_file_path: 哈希文件存储路径，None时自动查找项目根目录
         """
+        if hash_file_path is None:
+            # 自动找到项目根目录的config/file_hashes.json
+            current_file = Path(__file__).resolve()
+            project_root = current_file.parent.parent  # 从config目录向上一级
+            hash_file_path = project_root / "config" / "file_hashes.json"
+        
         self.hash_file_path = Path(hash_file_path)
         self.hash_data = self._load_hash_file()
     
