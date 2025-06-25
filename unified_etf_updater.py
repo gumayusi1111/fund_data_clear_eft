@@ -135,12 +135,55 @@ class UnifiedETFUpdater:
             self.logger.error(f"执行周更时发生异常: {str(e)}")
             return False
     
-    def run_status_analysis(self):
-        """状态分析功能已移除"""
+    def run_market_status_check(self):
+        """执行ETF市场状况监控"""
         self.logger.info("=" * 50)
-        self.logger.info("跳过ETF状态分析（功能已移除）")
+        self.logger.info("开始执行ETF市场状况监控")
         self.logger.info("=" * 50)
-        return True
+        
+        try:
+            # 执行市场状况监控脚本
+            market_script = self.project_root / "ETF市场状况" / "market_status_monitor.py"
+            
+            if not market_script.exists():
+                self.logger.error(f"市场状况监控脚本不存在: {market_script}")
+                return False
+                
+            # 切换到市场状况目录执行脚本
+            market_dir = self.project_root / "ETF市场状况"
+            
+            cmd = [sys.executable, "market_status_monitor.py"]
+            result = subprocess.run(
+                cmd,
+                cwd=str(market_dir),
+                capture_output=True,
+                text=True,
+                encoding='utf-8'
+            )
+            
+            if result.returncode == 0:
+                self.logger.info("✅ ETF市场状况监控完成")
+                
+                # 解析输出中的关键统计信息
+                output_lines = result.stdout.split('\n')
+                for line in output_lines:
+                    if any(keyword in line for keyword in ['活跃ETF', '正常ETF', '可能暂停', '可能退市', '数据异常']):
+                        self.logger.info(f"  📊 {line.strip()}")
+                    elif '可能已退市的ETF' in line:
+                        self.logger.info(f"  🔴 {line.strip()}")
+                        
+                return True
+            else:
+                self.logger.error("❌ ETF市场状况监控失败")
+                self.logger.error("错误输出:")
+                for line in result.stderr.split('\n'):
+                    if line.strip():
+                        self.logger.error(f"  {line}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"执行市场状况监控时发生异常: {str(e)}")
+            return False
     
     def test_system_status(self):
         """测试系统状态"""
@@ -150,6 +193,7 @@ class UnifiedETFUpdater:
         required_dirs = [
             "ETF日更",
             "ETF周更", 
+            "ETF市场状况",
             "config",
             "logs",
             "scripts"
@@ -167,7 +211,8 @@ class UnifiedETFUpdater:
             "config/config.json",
             "config/hash_manager.py",
             "ETF日更/auto_daily_sync.py",
-            "ETF周更/etf_auto_sync.py"
+            "ETF周更/etf_auto_sync.py",
+            "ETF市场状况/market_status_monitor.py"
         ]
         
         for file_path in required_files:
@@ -202,7 +247,7 @@ class UnifiedETFUpdater:
         results = {
             'daily': False,
             'weekly': False,
-            'analysis': False
+            'market_status': False
         }
         
         # 1. 执行日更
@@ -211,8 +256,8 @@ class UnifiedETFUpdater:
         # 2. 执行周更
         results['weekly'] = self.run_weekly_update()
         
-        # 3. 运行状态分析
-        results['analysis'] = self.run_status_analysis()
+        # 3. 执行市场状况监控
+        results['market_status'] = self.run_market_status_check()
         
         # 生成总结报告
         end_time = datetime.now()
@@ -228,7 +273,7 @@ class UnifiedETFUpdater:
         self.logger.info("各模块执行结果:")
         self.logger.info(f"  📈 日更流程: {'✅ 成功' if results['daily'] else '❌ 失败'}")
         self.logger.info(f"  📊 周更流程: {'✅ 成功' if results['weekly'] else '❌ 失败'}")
-        self.logger.info(f"  🔍 状态分析: {'✅ 成功' if results['analysis'] else '❌ 失败'}")
+        self.logger.info(f"  🔍 市场状况监控: {'✅ 成功' if results['market_status'] else '❌ 失败'}")
         
         total_success = sum(results.values())
         self.logger.info(f"")
