@@ -34,10 +34,10 @@ try:
     spec = importlib.util.spec_from_file_location("logger_config", logger_config_path)
     logger_config_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(logger_config_module)
-    setup_logger = logger_config_module.setup_logger
+    setup_daily_logger = logger_config_module.setup_daily_logger
     
     # 设置日更专用日志
-    logger = setup_logger("etf_daily", "daily")
+    logger = setup_daily_logger()
 except ImportError as e:
     print(f"警告：无法导入配置模块: {e}")
     HashManager = None

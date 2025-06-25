@@ -24,7 +24,7 @@ DAILY_DIR = project_root / "ETF日更"
 WEEKLY_DIR = project_root / "ETF周更"
 CATEGORIES = ["0_ETF日K(前复权)", "0_ETF日K(后复权)", "0_ETF日K(除权)"]
 
-def get_etf_codes_from_dir(directory: Path, category: str) -> set:
+def get_etf_codes_from_dir(directory: Path, category: str, include_delisted: bool = False) -> set:
     """获取指定目录和类别下的所有ETF代码"""
     category_path = directory / category
     if not category_path.exists():
@@ -38,6 +38,13 @@ def get_etf_codes_from_dir(directory: Path, category: str) -> set:
         if '.' in code:
             code = code.split('.')[0]
         codes.add(code)
+    
+    # 如果不包含退市ETF，则过滤掉退市的
+    if not include_delisted:
+        # 获取生命周期管理器实例
+        lifecycle_manager = ETFLifecycleManager()
+        delisted_codes = {etf["code"] for etf in lifecycle_manager.get_delisted_etfs()}
+        codes = codes - delisted_codes
     
     return codes
 
@@ -77,10 +84,15 @@ def analyze_etf_differences(daily_codes: set, weekly_codes: set, lifecycle_manag
         }
     }
 
-def analyze_etf_status():
+def analyze_etf_status(include_delisted: bool = False):
     """分析ETF状态"""
     logger = setup_system_logger()
     logger.info("🔍 开始分析ETF状态...")
+    
+    if include_delisted:
+        logger.info("📋 包含退市ETF的完整分析")
+    else:
+        logger.info("📋 仅分析活跃ETF（默认模式）")
     
     # 初始化生命周期管理器
     lifecycle_manager = ETFLifecycleManager()
@@ -91,8 +103,8 @@ def analyze_etf_status():
     
     logger.info("📊 收集ETF代码...")
     for category in CATEGORIES:
-        daily_category_codes = get_etf_codes_from_dir(DAILY_DIR, category)
-        weekly_category_codes = get_etf_codes_from_dir(WEEKLY_DIR, category)
+        daily_category_codes = get_etf_codes_from_dir(DAILY_DIR, category, include_delisted)
+        weekly_category_codes = get_etf_codes_from_dir(WEEKLY_DIR, category, include_delisted)
         
         daily_codes.update(daily_category_codes)
         weekly_codes.update(weekly_category_codes)
@@ -100,6 +112,12 @@ def analyze_etf_status():
         logger.info(f"  {category}:")
         logger.info(f"    日更: {len(daily_category_codes)} 个")
         logger.info(f"    周更: {len(weekly_category_codes)} 个")
+    
+    # 显示过滤信息
+    if not include_delisted:
+        delisted_count = len(lifecycle_manager.get_delisted_etfs())
+        if delisted_count > 0:
+            logger.info(f"🚫 已过滤 {delisted_count} 个退市ETF")
     
     logger.info(f"\n📋 总体统计:")
     logger.info(f"  日更总ETF数: {len(daily_codes)}")
@@ -143,9 +161,9 @@ def analyze_etf_status():
     for etf in newly_listed:
         logger.info(f"  • {etf['code']} - {etf['name']} (上市: {etf['listing_date']})")
     
-    logger.info(f"已下市ETF: {len(delisted)} 个")
+    logger.info(f"已退市ETF: {len(delisted)} 个")
     for etf in delisted:
-        logger.info(f"  • {etf['code']} - {etf['name']} (下市: {etf['delisting_date']})")
+        logger.info(f"  • {etf['code']} - {etf['name']} (退市: {etf['delisting_date']})")
     
     # 提供管理建议
     logger.info(f"\n💡 管理建议:")
@@ -163,12 +181,12 @@ def analyze_etf_status():
     
     return analysis
 
-def generate_status_report():
+def generate_status_report(include_delisted: bool = False):
     """生成状态报告"""
     logger = setup_system_logger()
     logger.info("📄 生成ETF状态报告...")
     
-    analysis = analyze_etf_status()
+    analysis = analyze_etf_status(include_delisted)
     lifecycle_manager = ETFLifecycleManager()
     lifecycle_report, _ = lifecycle_manager.generate_lifecycle_report()
     
@@ -206,6 +224,14 @@ def generate_status_report():
 
 def main():
     """主函数"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='ETF状态分析器')
+    parser.add_argument('--include-delisted', action='store_true', 
+                       help='包含已退市ETF进行分析')
+    
+    args = parser.parse_args()
+    
     logger = setup_system_logger()
     logger.info("🚀 ETF状态分析器启动")
     logger.info(f"⏰ 分析时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -221,7 +247,7 @@ def main():
     
     try:
         # 分析ETF状态
-        generate_status_report()
+        generate_status_report(args.include_delisted)
         
         logger.info(f"⏰ 完成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info("🎉 ETF状态分析完成！")
