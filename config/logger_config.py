@@ -36,12 +36,13 @@ def get_default_config() -> Dict[str, Any]:
     }
 
 
-def setup_logger(name: str = "etf_sync") -> logging.Logger:
+def setup_logger(name: str = "etf_sync", log_type: str = "general") -> logging.Logger:
     """
     设置日志记录器
     
     Args:
         name: 日志记录器名称
+        log_type: 日志类型 (daily, weekly, general)
         
     Returns:
         配置好的日志记录器
@@ -50,7 +51,8 @@ def setup_logger(name: str = "etf_sync") -> logging.Logger:
     log_config = config.get("logging", {})
     
     # 创建日志记录器
-    logger = logging.getLogger(name)
+    logger_name = f"{name}_{log_type}" if log_type != "general" else name
+    logger = logging.getLogger(logger_name)
     logger.setLevel(getattr(logging, log_config.get("level", "INFO")))
     
     # 避免重复添加处理器
@@ -62,8 +64,16 @@ def setup_logger(name: str = "etf_sync") -> logging.Logger:
         log_config.get("format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
     
-    # 文件处理器
-    log_file_path = log_config.get("file_path", "./logs/etf_sync.log")
+    # 文件处理器 - 根据类型选择不同的日志文件
+    log_base_dir = log_config.get("base_dir", "./logs")
+    log_files = log_config.get("files", {})
+    
+    if log_type in log_files:
+        log_filename = log_files[log_type]
+    else:
+        log_filename = log_files.get("general", "etf_sync.log")
+    
+    log_file_path = os.path.join(log_base_dir, log_filename)
     log_dir = os.path.dirname(log_file_path)
     
     # 确保日志目录存在
