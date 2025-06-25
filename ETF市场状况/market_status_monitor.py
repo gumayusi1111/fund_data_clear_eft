@@ -111,7 +111,7 @@ class ETFMarketMonitor:
             return None
     
     def determine_etf_status(self, etf_code: str, latest_date: str) -> Dict:
-        """判断ETF状态（考虑18:00后运行，最多有昨天数据）"""
+        """判断ETF状态（考虑18:00的数据更新时间）"""
         if not latest_date:
             return {
                 'code': etf_code,
@@ -125,34 +125,44 @@ class ETFMarketMonitor:
         try:
             latest_dt = datetime.strptime(latest_date, '%Y-%m-%d')
             
-            # 获取昨天的日期（18:00后运行，最多有昨天数据）
-            yesterday = self.today - timedelta(days=1)
-            latest_trading_day = self.get_latest_trading_day()
+            # 判断当前时间是否已过18:00
+            current_hour = self.today.hour
+            is_after_1800 = current_hour >= 18
             
-            # 计算从昨天开始落后的交易日数
+            # 确定期望的最新数据日期
+            if is_after_1800:
+                # 18:00后，应该有今天的数据
+                expected_latest_date = self.today.date()
+                reference_description = "18:00后应有今天数据"
+            else:
+                # 18:00前，最多有昨天的数据
+                expected_latest_date = (self.today - timedelta(days=1)).date()
+                reference_description = "18:00前最多有昨天数据"
+            
+            # 计算从期望日期开始落后的交易日数
             trading_days_behind = 0
-            check_date = yesterday
+            check_date = datetime.combine(expected_latest_date, datetime.min.time())
             
-            # 从昨天开始往前计算落后天数
-            while check_date > latest_dt:
+            # 从期望日期开始往前计算落后天数
+            while check_date.date() > latest_dt.date():
                 if self.is_trading_day(check_date):
                     trading_days_behind += 1
                 check_date -= timedelta(days=1)
                 # 防止计算过久
-                if (yesterday - check_date).days > 30:
+                if (datetime.combine(expected_latest_date, datetime.min.time()) - check_date).days > 30:
                     break
             
-            # 修正的判断逻辑（考虑18:00后运行）
-            if latest_dt.date() >= yesterday.date():
-                # 有昨天或今天的数据 - 正常
+            # 精确的判断逻辑
+            if latest_dt.date() >= expected_latest_date:
+                # 有期望日期或更新的数据
                 status = '活跃'
                 status_code = 'active'
-                analysis = '数据正常（18:00后最多有昨天数据）'
+                analysis = f'数据正常（{reference_description}）'
             elif trading_days_behind == 1:
-                # 落后1个交易日（相对于昨天）- 可能正常（周末/节假日）
+                # 落后1个交易日 - 可能正常（周末/节假日）
                 status = '正常'
                 status_code = 'normal'
-                analysis = '落后1个交易日（可能周末/节假日）'
+                analysis = f'落后1个交易日（可能周末/节假日，{reference_description}）'
             elif trading_days_behind <= 3:
                 # 落后2-3个交易日 - 可能暂停
                 status = '可能暂停'
@@ -171,7 +181,8 @@ class ETFMarketMonitor:
                 'latest_date': latest_date,
                 'days_behind': trading_days_behind,
                 'analysis': analysis,
-                'last_check': self.today.strftime('%Y-%m-%d %H:%M:%S')
+                'last_check': self.today.strftime('%Y-%m-%d %H:%M:%S'),
+                'check_time_info': f'当前{self.today.hour:02d}:{self.today.minute:02d}，{reference_description}'
             }
             
         except Exception as e:
@@ -286,6 +297,12 @@ class ETFMarketMonitor:
         print(f"📅 报告时间: {info['generated_time']}")
         print(f"📊 ETF总数: {info['total_etf_count']} 个")
         print(f"📈 最新交易日: {info['latest_trading_day']}")
+        
+        # 显示当前时间和判断基准
+        current_time = datetime.now()
+        is_after_1800 = current_time.hour >= 18
+        time_info = f"18:00后应有今天数据" if is_after_1800 else f"18:00前最多有昨天数据"
+        print(f"⏰ 当前时间: {current_time.strftime('%H:%M')} ({time_info})")
         print()
         
         total = info['total_etf_count']
