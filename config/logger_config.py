@@ -84,60 +84,43 @@ def get_project_root():
 
 
 def get_logger_paths():
-    """获取所有日志文件路径 - 按功能分类到不同子目录"""
+    """获取日志文件路径"""
     project_root = get_project_root()
     logs_dir = project_root / "logs"
     
     return {
-        'system': logs_dir / "system" / "etf_sync.log",              # 系统通用日志
-        'daily': logs_dir / "system" / "etf_daily_sync.log",        # 日更专用日志
-        'weekly': logs_dir / "system" / "etf_weekly_sync.log",      # 周更专用日志
-        'lifecycle': logs_dir / "lifecycle" / "etf_lifecycle.log",  # 生命周期管理日志
+        'system': logs_dir / "system" / "etf_sync.log",              # 统一系统日志
     }
 
 
-def get_report_paths():
-    """获取报告文件路径"""
-    project_root = get_project_root()
-    logs_dir = project_root / "logs"
-    
-    return {
-        'status_reports': logs_dir / "reports" / "status",          # 状态分析报告
-        'lifecycle_reports': logs_dir / "reports" / "lifecycle",    # 生命周期报告
-    }
+
 
 
 def setup_system_logger():
-    """设置系统通用日志"""
+    """设置统一系统日志"""
     paths = get_logger_paths()
     return setup_logger('etf_system', paths['system'])
 
-
+# 别名函数，保持向后兼容
 def setup_daily_logger():
-    """设置日更专用日志"""
-    paths = get_logger_paths()
-    return setup_logger('etf_daily', paths['daily'])
-
+    """日更专用日志（实际使用统一日志）"""
+    return setup_system_logger()
 
 def setup_weekly_logger():
-    """设置周更专用日志"""
-    paths = get_logger_paths()
-    return setup_logger('etf_weekly', paths['weekly'])
+    """周更专用日志（实际使用统一日志）"""
+    return setup_system_logger()
 
 
-def setup_lifecycle_logger():
-    """设置ETF生命周期管理专用日志"""
-    paths = get_logger_paths()
-    return setup_logger('etf_lifecycle', paths['lifecycle'])
+
 
 
 def get_all_loggers():
-    """获取所有日志记录器"""
+    """获取所有日志记录器（现在都指向同一个日志）"""
+    system_logger = setup_system_logger()
     return {
-        'system': setup_system_logger(),
-        'daily': setup_daily_logger(),
-        'weekly': setup_weekly_logger(),
-        'lifecycle': setup_lifecycle_logger(),
+        'system': system_logger,
+        'daily': system_logger,   # 指向同一个logger
+        'weekly': system_logger,  # 指向同一个logger
     }
 
 
@@ -164,8 +147,7 @@ def setup_logger_old(name: str = "etf_sync", log_type: str = "general") -> loggi
     logger_map = {
         "general": setup_system_logger,
         "daily": setup_daily_logger,
-        "weekly": setup_weekly_logger,
-        "lifecycle": setup_lifecycle_logger
+        "weekly": setup_weekly_logger
     }
     
     setup_func = logger_map.get(log_type, setup_system_logger)

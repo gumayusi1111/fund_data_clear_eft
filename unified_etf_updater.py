@@ -136,46 +136,11 @@ class UnifiedETFUpdater:
             return False
     
     def run_status_analysis(self):
-        """运行状态分析"""
+        """状态分析功能已移除"""
         self.logger.info("=" * 50)
-        self.logger.info("开始执行ETF状态分析")
+        self.logger.info("跳过ETF状态分析（功能已移除）")
         self.logger.info("=" * 50)
-        
-        try:
-            # 运行状态分析器 - 更新路径到scripts目录
-            analysis_script = self.project_root / "scripts" / "etf_status_analyzer.py"
-            
-            if not analysis_script.exists():
-                self.logger.error(f"状态分析脚本不存在: {analysis_script}")
-                return False
-            
-            cmd = [sys.executable, str(analysis_script)]
-            result = subprocess.run(
-                cmd,
-                cwd=str(self.project_root),
-                capture_output=True,
-                text=True,
-                encoding='utf-8'
-            )
-            
-            if result.returncode == 0:
-                self.logger.info("✅ ETF状态分析完成")
-                self.logger.info("分析结果:")
-                for line in result.stdout.split('\n'):
-                    if line.strip():
-                        self.logger.info(f"  {line}")
-                return True
-            else:
-                self.logger.error("❌ ETF状态分析失败")
-                self.logger.error("错误输出:")
-                for line in result.stderr.split('\n'):
-                    if line.strip():
-                        self.logger.error(f"  {line}")
-                return False
-                
-        except Exception as e:
-            self.logger.error(f"执行状态分析时发生异常: {str(e)}")
-            return False
+        return True
     
     def test_system_status(self):
         """测试系统状态"""
@@ -202,8 +167,7 @@ class UnifiedETFUpdater:
             "config/config.json",
             "config/hash_manager.py",
             "ETF日更/auto_daily_sync.py",
-            "ETF周更/etf_auto_sync.py",
-            "scripts/etf_status_analyzer.py"
+            "ETF周更/etf_auto_sync.py"
         ]
         
         for file_path in required_files:
@@ -220,15 +184,13 @@ class UnifiedETFUpdater:
             self.logger.error(f"❌ 配置加载失败: {e}")
         
         # 检查日志系统
-        log_files = ["etf_sync.log", "etf_daily_sync.log", "etf_weekly_sync.log", "etf_lifecycle.log"]
-        logs_dir = self.project_root / "logs"
+        log_file = "etf_sync.log"
+        log_path = self.project_root / "logs" / "system" / log_file
         
-        for log_file in log_files:
-            log_path = logs_dir / log_file
-            if log_path.exists():
-                self.logger.info(f"✅ 日志文件存在: {log_file}")
-            else:
-                self.logger.info(f"ℹ️  日志文件将自动创建: {log_file}")
+        if log_path.exists():
+            self.logger.info(f"✅ 统一日志文件存在: {log_file}")
+        else:
+            self.logger.info(f"ℹ️  统一日志文件将自动创建: {log_file}")
         
         self.logger.info("🔍 系统状态测试完成")
     
