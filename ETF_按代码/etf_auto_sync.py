@@ -4,6 +4,7 @@ ETF 数据自动同步脚本
 1. 从百度网盘下载新增月份 RAR 文件
 2. 解压并自动合并到本地历史目录
 3. 清理临时文件
+4. 自动管理文件哈希，避免重复下载
 """
 
 import os
@@ -12,12 +13,31 @@ import shutil
 import tempfile
 import re
 import subprocess
+import json
+import hashlib
 from datetime import datetime
 from typing import List, Tuple
+from pathlib import Path
 
-# 添加当前目录到 Python 路径以导入 merge_history_2025_5_6
+# 添加当前目录到 Python 路径以导入 etf_data_merger
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from merge_history_2025_5_6 import merge_two_folders
+from etf_data_merger import merge_two_folders
+
+# 添加config目录到路径
+config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config')
+sys.path.insert(0, config_dir)
+
+try:
+    import sys
+    import importlib.util
+    hash_manager_path = os.path.join(config_dir, 'hash_manager.py')
+    spec = importlib.util.spec_from_file_location("hash_manager", hash_manager_path)
+    hash_manager_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hash_manager_module)
+    HashManager = hash_manager_module.HashManager
+except ImportError:
+    print("警告：无法导入哈希管理器，将跳过哈希验证功能")
+    HashManager = None
 
 try:
     from bypy import ByPy
@@ -130,6 +150,20 @@ def sync_current_month_data():
     """同步当前月份的数据"""
     print("开始同步当前月份的 ETF 数据...")
     
+    # 初始化哈希管理器
+    hash_manager = None
+    if HashManager:
+        try:
+            hash_manager = HashManager()
+            print("✓ 哈希管理器初始化成功")
+            hash_manager.print_status()
+            
+            # 清理旧的哈希记录
+            hash_manager.clean_old_hashes()
+        except Exception as e:
+            print(f"⚠️ 哈希管理器初始化失败: {e}")
+            hash_manager = None
+    
     # 初始化 bypy
     bp = ByPy()
     
@@ -154,8 +188,25 @@ def sync_current_month_data():
     for file_name, category, year, month in current_month_files:
         print(f"  - {file_name}")
     
+    # 检查哈希，过滤已下载的文件
+    files_to_download = []
+    if hash_manager:
+        print("\n🔍 检查文件哈希...")
+        for file_name, category, year, month in current_month_files:
+            if hash_manager.is_file_downloaded(file_name):
+                print(f"⏭️ 跳过已下载的文件: {file_name}")
+            else:
+                files_to_download.append((file_name, category, year, month))
+                print(f"📥 需要下载: {file_name}")
+    else:
+        files_to_download = current_month_files
+    
+    if not files_to_download:
+        print("🎉 所有文件都已是最新，无需下载！")
+        return
+    
     # 检查是否有完整的三个类别
-    found_categories = set(category for _, category, _, _ in current_month_files)
+    found_categories = set(category for _, category, _, _ in files_to_download)
     expected_categories = set(CATEGORIES)
     missing_categories = expected_categories - found_categories
     
@@ -170,7 +221,7 @@ def sync_current_month_data():
     try:
         success_count = 0
         # 下载并处理每个文件
-        for file_name, category, year, month in current_month_files:
+        for file_name, category, year, month in files_to_download:
             print(f"\n处理 {file_name}...")
             
             # 下载文件
@@ -181,6 +232,11 @@ def sync_current_month_data():
             try:
                 bp.downfile(remote_file_path, local_rar_path)
                 print(f"✓ 下载完成")
+                
+                # 更新哈希
+                if hash_manager:
+                    hash_manager.update_file_hash(file_name, local_rar_path)
+                    
             except Exception as e:
                 print(f"✗ 下载失败: {e}")
                 continue
@@ -215,10 +271,15 @@ def sync_current_month_data():
         # 汇总结果
         now = datetime.now()
         print(f"\n🎉 {now.year}年{now.month}月数据同步完成!")
-        print(f"成功处理: {success_count}/{len(current_month_files)} 个文件")
+        print(f"成功处理: {success_count}/{len(files_to_download)} 个文件")
         
         if success_count > 0:
             print(f"数据已更新到: {LOCAL_ETF_DIR}")
+            
+        # 显示哈希管理器最终状态
+        if hash_manager:
+            print("\n📊 哈希管理器最终状态:")
+            hash_manager.print_status()
         
     finally:
         # 清理临时目录
@@ -256,6 +317,12 @@ def test_connection():
                 print(f"\n找到当前月份的 {len(current_files)} 个文件:")
                 for file_name, category, year, month in current_files:
                     print(f"  - {file_name} ({category})")
+                    
+                # 测试哈希管理
+                if HashManager:
+                    hash_manager = HashManager()
+                    print(f"\n📊 哈希管理器状态:")
+                    hash_manager.print_status()
             else:
                 now = datetime.now()
                 print(f"\n未找到 {now.year}年{now.month}月 的文件")

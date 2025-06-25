@@ -67,8 +67,16 @@ def merge_two_folders(hist_dir: str, new_dir: str) -> None:
         print(f'移动新文件: {name}')
 
 
-def merge_recent_months(root_dir: str) -> None:
-    """在根目录下自动将 2025年5、6月子目录数据合并到对应历史目录。"""
+def merge_monthly_data(root_dir: str, months: List[str] = None) -> None:
+    """在根目录下自动将指定月份子目录数据合并到对应历史目录。
+    
+    Args:
+        root_dir: ETF数据根目录
+        months: 要合并的月份列表，如 ['2025年5月', '2025年6月']，默认为5、6月
+    """
+    if months is None:
+        months = ['2025年5月', '2025年6月']
+    
     categories = [
         '0_ETF日K(前复权)',
         '0_ETF日K(后复权)',
@@ -77,25 +85,20 @@ def merge_recent_months(root_dir: str) -> None:
 
     for cat in categories:
         hist_dir = os.path.join(root_dir, cat)
-        may_dir = os.path.join(root_dir, f'{cat}_2025年5月')
-        june_dir = os.path.join(root_dir, f'{cat}_2025年6月')
-
+        
         if not os.path.isdir(hist_dir):
             print(f'⚠️ 找不到历史目录: {hist_dir}')
             continue
 
-        # 先合并五月，再合并六月
-        if os.path.isdir(may_dir):
-            print(f'\n合并 {cat} - 2025年5月数据...')
-            merge_two_folders(hist_dir, may_dir)
-        else:
-            print(f'未找到 5 月目录: {may_dir}')
-
-        if os.path.isdir(june_dir):
-            print(f'合并 {cat} - 2025年6月数据...')
-            merge_two_folders(hist_dir, june_dir)
-        else:
-            print(f'未找到 6 月目录: {june_dir}')
+        # 依次合并指定月份
+        for month in months:
+            month_dir = os.path.join(root_dir, f'{cat}_{month}')
+            
+            if os.path.isdir(month_dir):
+                print(f'\n合并 {cat} - {month}数据...')
+                merge_two_folders(hist_dir, month_dir)
+            else:
+                print(f'未找到月份目录: {month_dir}')
 
     print('\n全部分类合并完成 ✅')
 
@@ -103,4 +106,4 @@ def merge_recent_months(root_dir: str) -> None:
 if __name__ == '__main__':
     # 假设脚本放在 ETF_按代码 目录内
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    merge_recent_months(script_dir) 
+    merge_monthly_data(script_dir) 
