@@ -20,7 +20,7 @@ data_clear/
 │   ├── 0_ETF日K(后复权)/          # 后复权数据
 │   ├── 0_ETF日K(除权)/            # 除权数据
 │   ├── etf_auto_sync.py          # 自动同步主程序
-│   └── merge_history_2025_5_6.py # 历史数据合并脚本
+│   └── etf_data_merger.py        # 数据合并脚本
 ├── ETF_按日期/                    # 按日期组织的数据
 ├── config/                       # 配置文件目录
 │   ├── config.json              # 主配置文件
@@ -82,7 +82,7 @@ python etf_auto_sync.py
 
 ```bash
 cd ETF_按代码
-python merge_history_2025_5_6.py
+python etf_data_merger.py
 ```
 
 ## 📊 数据格式
