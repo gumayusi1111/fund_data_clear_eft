@@ -116,6 +116,36 @@ def should_update_data(filename: str, hash_manager) -> tuple[bool, str]:
     if not hash_manager.is_file_downloaded(filename):
         return True, "新文件或已更新"
     
+    # 检查本地数据完整性：三个复权目录都必须有今天的数据
+    today_date = filename[:8]  # YYYYMMDD
+    output_dirs = [
+        "0_ETF日K(前复权)",
+        "0_ETF日K(后复权)", 
+        "0_ETF日K(除权)"
+    ]
+    
+    # 检查几个代表性ETF是否有今天的数据
+    test_etfs = ["159001.SZ", "159003.SZ", "159005.SZ"]
+    
+    for etf_code in test_etfs:
+        for output_dir in output_dirs:
+            etf_file = os.path.join(CURRENT_DIR, output_dir, f"{etf_code}.csv")
+            
+            if not os.path.exists(etf_file):
+                continue  # 如果文件不存在，跳过检查
+            
+            try:
+                # 读取文件第一行数据，检查是否有今天的日期
+                with open(etf_file, 'r', encoding='utf-8') as f:
+                    f.readline()  # 跳过表头
+                    first_data_line = f.readline().strip()
+                    
+                if first_data_line and today_date not in first_data_line:
+                    return True, f"本地{output_dir}数据不完整，需要重新处理"
+                    
+            except Exception as e:
+                return True, f"检查本地数据时出错，需要重新处理: {e}"
+    
     return False, "已是最新"
 
 

@@ -40,6 +40,119 @@ class UnifiedETFUpdater:
         
         self.logger.info("统一ETF更新器初始化完成")
         
+    def auto_git_commit(self, success_modules):
+        """自动提交Git更新"""
+        # 检查是否启用Git自动提交
+        git_config = self.config.get('git_auto_commit', {})
+        if not git_config.get('enabled', False):
+            self.logger.info("ℹ️ Git自动提交已禁用，跳过")
+            return True
+            
+        self.logger.info("=" * 50)
+        self.logger.info("开始自动Git提交")
+        self.logger.info("=" * 50)
+        
+        try:
+            # 检查是否是Git仓库
+            result = subprocess.run(
+                ["git", "status"],
+                cwd=str(self.project_root),
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode != 0:
+                self.logger.warning("⚠️ 当前目录不是Git仓库，跳过自动提交")
+                return False
+            
+            # 检查是否有变更
+            result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=str(self.project_root),
+                capture_output=True,
+                text=True
+            )
+            
+            if not result.stdout.strip():
+                self.logger.info("ℹ️ 没有文件变更，跳过提交")
+                return True
+            
+            # 显示变更的文件
+            self.logger.info("📄 检测到以下文件变更:")
+            for line in result.stdout.strip().split('\n'):
+                if line.strip():
+                    self.logger.info(f"   {line}")
+            
+            # 添加所有变更文件
+            add_result = subprocess.run(
+                ["git", "add", "."],
+                cwd=str(self.project_root),
+                capture_output=True,
+                text=True
+            )
+            
+            if add_result.returncode != 0:
+                self.logger.error(f"❌ Git add 失败: {add_result.stderr}")
+                return False
+            
+            # 生成提交信息
+            success_count = len([m for m in success_modules.values() if m])
+            total_count = len(success_modules)
+            
+            commit_prefix = git_config.get('commit_message_prefix', '数据自动更新')
+            commit_msg = f"{commit_prefix} - 成功率:{success_count}/{total_count}"
+            
+            # 添加时间戳（如果配置启用）
+            if git_config.get('include_timestamp', True):
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                commit_msg = f"{commit_prefix} {timestamp} - 成功率:{success_count}/{total_count}"
+            
+            # 添加详细信息
+            if success_modules.get('daily'):
+                commit_msg += "\n✅ 日更数据已更新"
+            if success_modules.get('weekly'):
+                commit_msg += "\n✅ 周更数据已更新"
+            if success_modules.get('market_status'):
+                commit_msg += "\n✅ 市场状况已更新"
+            
+            # 执行提交
+            commit_result = subprocess.run(
+                ["git", "commit", "-m", commit_msg],
+                cwd=str(self.project_root),
+                capture_output=True,
+                text=True
+            )
+            
+            if commit_result.returncode == 0:
+                self.logger.info("✅ Git提交成功")
+                self.logger.info(f"📝 提交信息: {commit_msg.split(chr(10))[0]}")
+                
+                # 根据配置决定是否推送到远程仓库
+                if git_config.get('auto_push', True):
+                    push_result = subprocess.run(
+                        ["git", "push"],
+                        cwd=str(self.project_root),
+                        capture_output=True,
+                        text=True
+                    )
+                    
+                    if push_result.returncode == 0:
+                        self.logger.info("✅ 推送到远程仓库成功")
+                    else:
+                        self.logger.warning("⚠️ 推送到远程仓库失败，但本地提交成功")
+                        self.logger.warning(f"推送错误: {push_result.stderr}")
+                else:
+                    self.logger.info("ℹ️ 自动推送已禁用，仅本地提交")
+                
+                return True
+            else:
+                self.logger.error(f"❌ Git提交失败: {commit_result.stderr}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"自动Git提交时发生异常: {str(e)}")
+            return False
+        
     def run_daily_update(self):
         """执行日更流程"""
         self.logger.info("=" * 50)
@@ -286,17 +399,49 @@ class UnifiedETFUpdater:
         else:
             self.logger.error("❌ 大部分流程执行失败，请检查系统状态")
         
+        # 如果有任何模块成功执行，则进行自动Git提交
+        if total_success > 0:
+            self.logger.info("")
+            git_success = self.auto_git_commit(results)
+            if git_success:
+                self.logger.info("✅ 数据更新和Git提交全部完成！")
+            else:
+                self.logger.warning("⚠️ 数据更新完成，但Git提交失败")
+        else:
+            self.logger.info("ℹ️ 没有成功的更新，跳过Git提交")
+        
         return results
 
 def main():
     """主函数"""
-    if len(sys.argv) > 1 and sys.argv[1] == "test":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='统一ETF更新器')
+    parser.add_argument('--mode', choices=['update', 'test'], default='update',
+                        help='运行模式: update(数据更新), test(系统测试)')
+    parser.add_argument('--no-git', action='store_true',
+                        help='禁用Git自动提交功能')
+    parser.add_argument('--no-push', action='store_true',
+                        help='禁用Git自动推送功能（仅本地提交）')
+    
+    args = parser.parse_args()
+    
+    updater = UnifiedETFUpdater()
+    
+    # 根据命令行参数临时修改配置
+    if args.no_git:
+        updater.config['git_auto_commit']['enabled'] = False
+        updater.logger.info("🔧 已通过命令行参数禁用Git自动提交")
+    
+    if args.no_push:
+        updater.config['git_auto_commit']['auto_push'] = False
+        updater.logger.info("🔧 已通过命令行参数禁用Git自动推送")
+    
+    if args.mode == 'test':
         # 测试模式
-        updater = UnifiedETFUpdater()
         updater.test_system_status()
     else:
         # 正常更新模式
-        updater = UnifiedETFUpdater()
         updater.run_full_update()
 
 if __name__ == "__main__":
