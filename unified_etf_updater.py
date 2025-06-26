@@ -226,14 +226,14 @@ class UnifiedETFUpdater:
             if import_type == "daily":
                 importer = DailyDataImporter()
                 base_dir = base_dir or str(self.project_root / "ETF日更")
-                # 只导入最近1天的数据（增量导入）
-                results = importer.import_latest_data_only(base_dir, days_back=1)
+                # 只导入最近1天的数据（高性能批量导入）
+                results = importer.import_latest_data_optimized(base_dir, days_back=1)
                 
             elif import_type == "weekly":
                 importer = WeeklyDataImporter()
                 base_dir = base_dir or str(self.project_root / "ETF周更")
-                # 只导入最近1周的数据（增量导入）
-                results = importer.import_latest_weekly_data(base_dir, weeks_back=1)
+                # 只导入最近1周的数据（高性能批量导入）
+                results = importer.import_latest_weekly_data_optimized(base_dir, weeks_back=1)
                 
             elif import_type == "market_status":
                 importer = MarketStatusImporter()
