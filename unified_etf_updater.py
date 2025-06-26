@@ -239,22 +239,16 @@ class UnifiedETFUpdater:
             return False
         
     def run_daily_update(self):
-        """执行日更流程"""
+        """执行日更流程（智能跳过）"""
         self.logger.info("=" * 50)
-        self.logger.info("开始执行ETF日更流程")
+        self.logger.info("开始执行ETF日更流程（智能检查）")
         self.logger.info("=" * 50)
-        
         try:
-            # 执行日更同步脚本
             daily_script = self.project_root / "ETF日更" / "auto_daily_sync.py"
-            
             if not daily_script.exists():
                 self.logger.error(f"日更脚本不存在: {daily_script}")
-                return False
-                
-            # 切换到日更目录执行脚本
+                return False, "脚本不存在"
             daily_dir = self.project_root / "ETF日更"
-            
             cmd = [sys.executable, "auto_daily_sync.py"]
             result = subprocess.run(
                 cmd,
@@ -263,56 +257,36 @@ class UnifiedETFUpdater:
                 text=True,
                 encoding='utf-8'
             )
-            
-            if result.returncode == 0:
-                self.logger.info("✅ ETF日更完成")
-                self.logger.info("日更输出:")
-                for line in result.stdout.split('\n'):
-                    if line.strip():
-                        self.logger.info(f"  {line}")
-                
-                # 数据更新成功后，自动导入到数据库
-                db_import_success = self.run_database_import("daily")
-                if db_import_success:
-                    self.logger.info("✅ 日更数据库导入完成")
-                else:
-                    self.logger.warning("⚠️ 日更数据库导入失败或无更新")
-                
-                return True
+            output = result.stdout + result.stderr
+            if "没有找到今天的文件" in output or "未找到任何文件" in output:
+                self.logger.info("📅 今天无新数据，智能跳过日更")
+                return False, "无新数据"
+            if "所有文件都已是最新" in output or "无需下载" in output:
+                self.logger.info("📅 日更数据已是最新，智能跳过")
+                return False, "已是最新"
+            if result.returncode == 0 and ("处理完成" in output or "下载完成" in output or "合并完成" in output):
+                self.logger.info("✅ ETF日更完成（有新数据）")
+                return True, "有新数据"
             else:
                 self.logger.error("❌ ETF日更失败")
-                self.logger.error("错误输出:")
-                for line in result.stderr.split('\n'):
-                    if line.strip():
-                        self.logger.error(f"  {line}")
-                        
-                # 可能是非交易日或网络问题
-                if "没有找到" in result.stderr or "not found" in result.stderr.lower():
-                    self.logger.warning("⚠️  可能原因: 今天是非交易日或数据暂未更新")
-                
-                return False
-                
+                if result.stderr:
+                    self.logger.error(f"错误: {result.stderr[:200]}...")
+                return False, "执行失败"
         except Exception as e:
             self.logger.error(f"执行日更时发生异常: {str(e)}")
-            return False
-    
+            return False, f"异常: {str(e)}"
+
     def run_weekly_update(self):
-        """执行周更流程"""
+        """执行周更流程（智能跳过）"""
         self.logger.info("=" * 50)
-        self.logger.info("开始执行ETF周更流程")
+        self.logger.info("开始执行ETF周更流程（智能检查）")
         self.logger.info("=" * 50)
-        
         try:
-            # 执行周更同步脚本
             weekly_script = self.project_root / "ETF周更" / "etf_auto_sync.py"
-            
             if not weekly_script.exists():
                 self.logger.error(f"周更脚本不存在: {weekly_script}")
-                return False
-                
-            # 切换到周更目录执行脚本
+                return False, "脚本不存在"
             weekly_dir = self.project_root / "ETF周更"
-            
             cmd = [sys.executable, "etf_auto_sync.py"]
             result = subprocess.run(
                 cmd,
@@ -321,51 +295,39 @@ class UnifiedETFUpdater:
                 text=True,
                 encoding='utf-8'
             )
-            
-            if result.returncode == 0:
-                self.logger.info("✅ ETF周更完成")
-                self.logger.info("周更输出:")
-                for line in result.stdout.split('\n'):
-                    if line.strip():
-                        self.logger.info(f"  {line}")
-                
-                # 数据更新成功后，自动导入到数据库
-                db_import_success = self.run_database_import("weekly")
-                if db_import_success:
-                    self.logger.info("✅ 周更数据库导入完成")
-                else:
-                    self.logger.warning("⚠️ 周更数据库导入失败或无更新")
-                
-                return True
+            output = result.stdout + result.stderr
+            if "所有文件都已是最新，无需下载" in output:
+                self.logger.info("📊 周更压缩包无变化，智能跳过")
+                return False, "无变化"
+            if "未找到" in output and "月" in output:
+                self.logger.info("📊 未找到当前月份压缩包，智能跳过")
+                return False, "无当月数据"
+            if result.returncode == 0 and ("数据同步完成" in output or "合并完成" in output or "下载完成" in output):
+                self.logger.info("✅ ETF周更完成（有新数据）")
+                return True, "有新数据"
             else:
                 self.logger.error("❌ ETF周更失败")
-                self.logger.error("错误输出:")
-                for line in result.stderr.split('\n'):
-                    if line.strip():
-                        self.logger.error(f"  {line}")
-                return False
-                
+                if result.stderr:
+                    self.logger.error(f"错误: {result.stderr[:200]}...")
+                return False, "执行失败"
         except Exception as e:
             self.logger.error(f"执行周更时发生异常: {str(e)}")
-            return False
-    
-    def run_market_status_check(self):
-        """执行ETF市场状况监控"""
+            return False, f"异常: {str(e)}"
+
+    def run_market_status_check(self, daily_has_new_data: bool):
+        """执行ETF市场状况监控（依赖日更）"""
         self.logger.info("=" * 50)
-        self.logger.info("开始执行ETF市场状况监控")
+        self.logger.info("开始执行ETF市场状况监控（智能检查）")
         self.logger.info("=" * 50)
-        
+        if not daily_has_new_data:
+            self.logger.info("📊 日更无新数据，智能跳过市场状况检查")
+            return False, "依赖日更跳过"
         try:
-            # 执行市场状况监控脚本
             market_script = self.project_root / "ETF市场状况" / "market_status_monitor.py"
-            
             if not market_script.exists():
                 self.logger.error(f"市场状况监控脚本不存在: {market_script}")
-                return False
-                
-            # 切换到市场状况目录执行脚本
+                return False, "脚本不存在"
             market_dir = self.project_root / "ETF市场状况"
-            
             cmd = [sys.executable, "market_status_monitor.py"]
             result = subprocess.run(
                 cmd,
@@ -374,38 +336,19 @@ class UnifiedETFUpdater:
                 text=True,
                 encoding='utf-8'
             )
-            
-            if result.returncode == 0:
-                self.logger.info("✅ ETF市场状况监控完成")
-                
-                # 解析输出中的关键统计信息
-                output_lines = result.stdout.split('\n')
-                for line in output_lines:
-                    if any(keyword in line for keyword in ['活跃ETF', '正常ETF', '可能暂停', '可能退市', '数据异常']):
-                        self.logger.info(f"  📊 {line.strip()}")
-                    elif '可能已退市的ETF' in line:
-                        self.logger.info(f"  🔴 {line.strip()}")
-                
-                # 市场状况更新成功后，自动导入到数据库
-                db_import_success = self.run_database_import("market_status")
-                if db_import_success:
-                    self.logger.info("✅ 市场状况数据库导入完成")
-                else:
-                    self.logger.warning("⚠️ 市场状况数据库导入失败或无更新")
-                        
-                return True
+            output = result.stdout + result.stderr
+            if result.returncode == 0 and ("报告已更新" in output or "监控完成" in output):
+                self.logger.info("✅ ETF市场状况监控完成（有新数据）")
+                return True, "有新数据"
             else:
                 self.logger.error("❌ ETF市场状况监控失败")
-                self.logger.error("错误输出:")
-                for line in result.stderr.split('\n'):
-                    if line.strip():
-                        self.logger.error(f"  {line}")
-                return False
-                
+                if result.stderr:
+                    self.logger.error(f"错误: {result.stderr[:200]}...")
+                return False, "执行失败"
         except Exception as e:
             self.logger.error(f"执行市场状况监控时发生异常: {str(e)}")
-            return False
-    
+            return False, f"异常: {str(e)}"
+
     def test_system_status(self):
         """测试系统状态"""
         self.logger.info("🔍 开始系统状态测试")
@@ -461,53 +404,39 @@ class UnifiedETFUpdater:
         self.logger.info("🔍 系统状态测试完成")
     
     def run_full_update(self):
-        """执行完整更新流程"""
+        """执行完整更新流程（智能跳过无新数据的流程）"""
         start_time = datetime.now()
-        self.logger.info("🚀 开始执行完整ETF数据更新流程")
-        
+        self.logger.info("🚀 开始执行完整ETF数据更新流程（智能跳过无新数据）")
         results = {
             'daily': False,
             'weekly': False,
             'market_status': False
         }
-        
+        reasons = {}
         # 1. 执行日更
-        results['daily'] = self.run_daily_update()
-        
+        daily_has_new, daily_reason = self.run_daily_update()
+        results['daily'] = daily_has_new
+        reasons['daily'] = daily_reason
         # 2. 执行周更
-        results['weekly'] = self.run_weekly_update()
-        
-        # 3. 执行市场状况监控
-        results['market_status'] = self.run_market_status_check()
-        
-        # 生成总结报告
-        end_time = datetime.now()
-        duration = end_time - start_time
-        
-        self.logger.info("=" * 60)
-        self.logger.info("📊 ETF数据更新完成总结")
-        self.logger.info("=" * 60)
-        self.logger.info(f"开始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        self.logger.info(f"结束时间: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        self.logger.info(f"总耗时: {duration}")
-        self.logger.info("")
-        self.logger.info("各模块执行结果:")
-        self.logger.info(f"  📈 日更流程: {'✅ 成功' if results['daily'] else '❌ 失败'}")
-        self.logger.info(f"  📊 周更流程: {'✅ 成功' if results['weekly'] else '❌ 失败'}")
-        self.logger.info(f"  🔍 市场状况监控: {'✅ 成功' if results['market_status'] else '❌ 失败'}")
-        
+        weekly_has_new, weekly_reason = self.run_weekly_update()
+        results['weekly'] = weekly_has_new
+        reasons['weekly'] = weekly_reason
+        # 3. 市场状况依赖日更
+        market_has_new, market_reason = self.run_market_status_check(daily_has_new)
+        results['market_status'] = market_has_new
+        reasons['market_status'] = market_reason
+        # 4. 数据库导入（只有有新数据才导入）
+        if daily_has_new:
+            self.logger.info("📥 日更有新数据，导入数据库...")
+            self.run_database_import("daily")
+        if weekly_has_new:
+            self.logger.info("📥 周更有新数据，导入数据库...")
+            self.run_database_import("weekly")
+        if market_has_new:
+            self.logger.info("📥 市场状况有新数据，导入数据库...")
+            self.run_database_import("market_status")
+        # 5. 只有有新数据才允许Git提交
         total_success = sum(results.values())
-        self.logger.info(f"")
-        self.logger.info(f"整体成功率: {total_success}/3 ({total_success/3*100:.1f}%)")
-        
-        if total_success == 3:
-            self.logger.info("🎉 所有流程执行成功！")
-        elif total_success >= 2:
-            self.logger.info("⚠️  大部分流程执行成功，请检查失败项")
-        else:
-            self.logger.error("❌ 大部分流程执行失败，请检查系统状态")
-        
-        # 如果有任何模块成功执行，则进行自动Git提交
         if total_success > 0:
             self.logger.info("")
             git_success = self.auto_git_commit(results)
@@ -517,7 +446,20 @@ class UnifiedETFUpdater:
                 self.logger.warning("⚠️ 数据更新完成，但Git提交失败")
         else:
             self.logger.info("ℹ️ 没有成功的更新，跳过Git提交")
-        
+        # 总结报告
+        end_time = datetime.now()
+        duration = end_time - start_time
+        self.logger.info("=" * 60)
+        self.logger.info("📊 ETF数据更新完成总结")
+        self.logger.info("=" * 60)
+        self.logger.info(f"开始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(f"结束时间: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(f"总耗时: {duration}")
+        self.logger.info("")
+        self.logger.info("各模块执行结果:")
+        for k in results:
+            self.logger.info(f"  {k}: {'✅ 有新数据' if results[k] else '⏭️ 跳过/无新数据'} ({reasons[k]})")
+        self.logger.info(f"整体有新数据模块数: {total_success}/3")
         return results
 
 def main():

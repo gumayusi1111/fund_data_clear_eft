@@ -18,7 +18,7 @@ from pathlib import Path
 import argparse
 
 # 配置常量
-DAILY_DATA_DIR = "../ETF_按日期_源数据"  # 按日期数据目录（默认值）
+DAILY_DATA_DIR = "./按日期_源数据"  # 按日期数据目录（默认值，已废弃）
 OUTPUT_BASE_DIR = "."  # 输出基础目录
 CATEGORIES = ["0_ETF日K(前复权)", "0_ETF日K(后复权)", "0_ETF日K(除权)"]
 
@@ -294,7 +294,7 @@ def main():
         recent_dates = get_latest_dates(args.days)
         csv_files = []
         for date_str in recent_dates:
-            file_path = os.path.join(DAILY_DATA_DIR, f"{date_str}.csv")
+            file_path = os.path.join(source_dir, f"{date_str}.csv")
             if os.path.exists(file_path):
                 csv_files.append(file_path)
         csv_files.sort()

@@ -53,10 +53,12 @@ LOCAL_ETF_DIR = os.path.dirname(os.path.abspath(__file__))  # 本地 ETF周更 �
 CATEGORIES = ["0_ETF日K(前复权)", "0_ETF日K(后复权)", "0_ETF日K(除权)"]
 
 
-def list_remote_files(bp: ByPy, remote_path: str) -> List[str]:
-    """列出百度网盘指定路径下的文件列表"""
+def list_remote_files_with_info(bp: ByPy, remote_path: str) -> List[Tuple[str, str, str, str]]:
+    """
+    列出百度网盘指定路径下的文件列表，包含详细信息
+    返回: [(文件名, 大小, 修改时间, md5), ...]
+    """
     try:
-        # 使用 bypy 的 list 方法，它会输出到 stdout
         import io
         import sys
         from contextlib import redirect_stdout
@@ -73,16 +75,105 @@ def list_remote_files(bp: ByPy, remote_path: str) -> List[str]:
         for line in output.split('\n'):
             line = line.strip()
             if line.startswith('F '):
-                # 格式: F 文件名 大小 日期时间 哈希
-                parts = line.split(' ', 3)
-                if len(parts) >= 2:
-                    file_name = parts[1]
-                    files.append(file_name)
+                # bypy list输出格式: F 文件名 大小 修改时间 md5
+                # 例如: F filename.rar 123456789 2024-06-26T15:30:45 abc123def456
+                try:
+                    parts = line.split()
+                    if len(parts) >= 5:
+                        file_name = parts[1]
+                        file_size = parts[2]
+                        file_time = parts[3] + "T" + parts[4] if len(parts) >= 5 else parts[3]
+                        file_md5 = parts[5] if len(parts) >= 6 else ""
+                        files.append((file_name, file_size, file_time, file_md5))
+                    elif len(parts) >= 2:
+                        # 如果格式不完整，至少获取文件名
+                        file_name = parts[1]
+                        files.append((file_name, "", "", ""))
+                except Exception as e:
+                    print(f"解析行失败: {line}, 错误: {e}")
+                    continue
         
         return files
     except Exception as e:
         print(f"列出远程文件失败: {e}")
         return []
+
+
+def list_remote_files(bp: ByPy, remote_path: str) -> List[str]:
+    """列出百度网盘指定路径下的文件列表（保持向后兼容）"""
+    files_info = list_remote_files_with_info(bp, remote_path)
+    return [file_name for file_name, _, _, _ in files_info]
+
+
+def check_file_needs_update(hash_manager, file_name: str, remote_size: str, remote_time: str, remote_md5: str) -> Tuple[bool, str]:
+    """
+    检查文件是否需要更新
+    
+    Args:
+        hash_manager: 哈希管理器实例
+        file_name: 文件名
+        remote_size: 远程文件大小
+        remote_time: 远程文件修改时间
+        remote_md5: 远程文件MD5
+        
+    Returns:
+        (是否需要更新, 原因说明)
+    """
+    if not hash_manager:
+        return True, "无哈希管理器，建议下载"
+    
+    # 检查是否有本地记录
+    if not hash_manager.is_file_downloaded(file_name):
+        return True, "首次下载"
+    
+    # 获取本地记录的哈希值
+    local_hash = hash_manager.hash_data.get(file_name, "")
+    
+    # 如果远程提供了MD5且与本地不同，说明文件有更新
+    if remote_md5 and local_hash and remote_md5 != local_hash:
+        return True, f"远程文件已更新 (MD5: {remote_md5[:8]}... vs 本地: {local_hash[:8]}...)"
+    
+    # 如果没有MD5但有大小和时间信息
+    if remote_size or remote_time:
+        # 这里可以添加更复杂的检查逻辑
+        # 比如检查本地文件的修改时间和大小
+        # 目前先基于MD5检查
+        pass
+    
+    # 如果有本地记录但没有远程MD5信息，建议用户手动检查
+    if not remote_md5 and local_hash:
+        return False, "已有本地记录，但无法验证远程更新状态，建议手动检查"
+    
+    return False, "文件已是最新"
+
+
+def get_current_month_files_with_info(files_info: List[Tuple[str, str, str, str]]) -> List[Tuple[str, str, int, int, str, str, str]]:
+    """
+    查找当前月份的 RAR 文件，包含详细信息
+    返回: [(文件名, 类别, 年份, 月份, 大小, 修改时间, MD5), ...]
+    """
+    # 获取当前年月
+    now = datetime.now()
+    current_year = now.year
+    current_month = now.month
+    
+    print(f"当前时间: {current_year}年{current_month}月")
+    
+    pattern = r'(0_ETF日K\([^)]+\))_(\d{4})年(\d+)月\.rar$'
+    current_month_files = []
+    
+    for file_name, file_size, file_time, file_md5 in files_info:
+        match = re.match(pattern, file_name)
+        if match:
+            category = match.group(1)
+            year = int(match.group(2))
+            month = int(match.group(3))
+            
+            # 只处理当前月份的文件
+            if year == current_year and month == current_month:
+                current_month_files.append((file_name, category, year, month, file_size, file_time, file_md5))
+    
+    return current_month_files
 
 
 def extract_rar(rar_path: str, extract_to: str) -> bool:
@@ -120,7 +211,7 @@ def extract_rar(rar_path: str, extract_to: str) -> bool:
 
 def get_current_month_files(files: List[str]) -> List[Tuple[str, str, int, int]]:
     """
-    查找当前月份的 RAR 文件
+    查找当前月份的 RAR 文件（向后兼容版本）
     返回: [(文件名, 类别, 年份, 月份), ...]
     """
     # 获取当前年月
@@ -148,8 +239,10 @@ def get_current_month_files(files: List[str]) -> List[Tuple[str, str, int, int]]
 
 
 def sync_current_month_data():
-    """同步当前月份的数据"""
-    print("开始同步当前月份的 ETF 数据...")
+    """同步当前月份的数据（专注于当月压缩包的周更新）"""
+    now = datetime.now()
+    print(f"开始同步当前月份({now.year}年{now.month}月)的 ETF 数据...")
+    print("📅 只检查当前月份的压缩包更新，忽略历史数据")
     
     # 初始化哈希管理器
     hash_manager = None
@@ -176,9 +269,8 @@ def sync_current_month_data():
         return
     
     # 查找当前月份文件
-    current_month_files = get_current_month_files(remote_files)
+    current_month_files = get_current_month_files_with_info(list_remote_files_with_info(bp, BAIDU_REMOTE_BASE))
     if not current_month_files:
-        now = datetime.now()
         print(f"未找到 {now.year}年{now.month}月 的 RAR 文件")
         print("可能原因：")
         print("1. 当月数据尚未上传到百度网盘")
@@ -186,28 +278,65 @@ def sync_current_month_data():
         return
     
     print(f"找到当前月份的 {len(current_month_files)} 个文件:")
-    for file_name, category, year, month in current_month_files:
-        print(f"  - {file_name}")
+    for file_name, category, year, month, file_size, file_time, file_md5 in current_month_files:
+        print(f"  - {file_name} ({category}) [{file_size} bytes]")
     
     # 检查哈希，过滤已下载的文件
     files_to_download = []
+    files_need_manual_check = []
+    
     if hash_manager:
-        print("\n🔍 检查文件哈希...")
-        for file_name, category, year, month in current_month_files:
-            if hash_manager.is_file_downloaded(file_name):
-                print(f"⏭️ 跳过已下载的文件: {file_name}")
+        print("\n🔍 智能检查当前月份文件更新状态...")
+        for file_name, category, year, month, file_size, file_time, file_md5 in current_month_files:
+            # 只检查当前月份的文件
+            now = datetime.now()
+            if year != now.year or month != now.month:
+                print(f"⏭️ 跳过非当前月份文件: {file_name}")
+                continue
+                
+            needs_update, reason = check_file_needs_update(hash_manager, file_name, file_size, file_time, file_md5)
+            
+            if needs_update:
+                files_to_download.append((file_name, category, year, month, file_size, file_time, file_md5))
+                print(f"📥 需要下载: {file_name} - {reason}")
+            elif "建议手动检查" in reason:
+                files_need_manual_check.append((file_name, category, year, month, file_size, file_time, file_md5))
+                print(f"❓ 需要确认: {file_name} - {reason}")
             else:
-                files_to_download.append((file_name, category, year, month))
-                print(f"📥 需要下载: {file_name}")
+                print(f"✅ 文件最新: {file_name} - {reason}")
     else:
-        files_to_download = current_month_files
-    
+        # 没有哈希管理器时，也只处理当前月份
+        now = datetime.now()
+        files_to_download = [(f, c, y, m, s, t, md5) for f, c, y, m, s, t, md5 in current_month_files 
+                           if y == now.year and m == now.month]
+
+    # 如果有需要手动检查的文件，询问用户
+    if files_need_manual_check:
+        print(f"\n⚠️ 发现 {len(files_need_manual_check)} 个当前月份文件需要手动确认:")
+        for file_name, category, year, month, file_size, file_time, file_md5 in files_need_manual_check:
+            print(f"  - {file_name} ({category})")
+            print(f"    大小: {file_size} bytes")
+            print(f"    远程修改时间: {file_time}")
+            print(f"    远程MD5: {file_md5[:16]}..." if file_md5 else "    远程MD5: 未提供")
+        
+        print(f"\n这些{now.month}月文件已有本地记录，但无法确定远程是否有更新。")
+        response = input("是否要重新下载这些文件？(y/n/s=跳过): ").lower().strip()
+        
+        if response == 'y':
+            files_to_download.extend(files_need_manual_check)
+            print("✓ 已添加到下载列表")
+        elif response == 's':
+            print("✓ 跳过这些文件")
+        else:
+            print("✓ 不下载这些文件")
+
     if not files_to_download:
-        print("🎉 所有文件都已是最新，无需下载！")
+        now = datetime.now()
+        print(f"🎉 当前月份({now.month}月)所有文件都已是最新，无需下载！")
         return
-    
+
     # 检查是否有完整的三个类别
-    found_categories = set(category for _, category, _, _ in files_to_download)
+    found_categories = set(category for _, category, _, _, _, _, _ in files_to_download)
     expected_categories = set(CATEGORIES)
     missing_categories = expected_categories - found_categories
     
@@ -222,7 +351,7 @@ def sync_current_month_data():
     try:
         success_count = 0
         # 下载并处理每个文件
-        for file_name, category, year, month in files_to_download:
+        for file_name, category, year, month, file_size, file_time, file_md5 in files_to_download:
             print(f"\n处理 {file_name}...")
             
             # 下载文件
@@ -313,10 +442,10 @@ def test_connection():
                 print(f"  ... 还有 {len(files) - 10} 个文件")
                 
             # 查找当前月份文件
-            current_files = get_current_month_files(files)
+            current_files = get_current_month_files_with_info(list_remote_files_with_info(bp, BAIDU_REMOTE_BASE))
             if current_files:
                 print(f"\n找到当前月份的 {len(current_files)} 个文件:")
-                for file_name, category, year, month in current_files:
+                for file_name, category, year, month, file_size, file_time, file_md5 in current_files:
                     print(f"  - {file_name} ({category})")
                     
                 # 测试哈希管理
