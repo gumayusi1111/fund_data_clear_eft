@@ -119,16 +119,37 @@ class UnifiedETFUpdater:
                 if line.strip():
                     self.logger.info(f"   {line}")
             
-            # 添加所有变更文件
-            add_result = subprocess.run(
-                ["git", "add", "."],
-                cwd=str(self.project_root),
-                capture_output=True,
-                text=True
-            )
+            # 只添加数据文件，不包含Python脚本
+            data_patterns = [
+                "ETF日更/0_ETF日K(前复权)/*.csv",
+                "ETF日更/0_ETF日K(后复权)/*.csv", 
+                "ETF日更/0_ETF日K(除权)/*.csv",
+                "ETF周更/0_ETF日K(前复权)/*.csv",
+                "ETF周更/0_ETF日K(后复权)/*.csv",
+                "ETF周更/0_ETF日K(除权)/*.csv",
+                "ETF市场状况/etf_market_status.json"
+            ]
             
-            if add_result.returncode != 0:
-                self.logger.error(f"❌ Git add 失败: {add_result.stderr}")
+            added_files = []
+            
+            for pattern in data_patterns:
+                add_result = subprocess.run(
+                    ["git", "add", pattern],
+                    cwd=str(self.project_root),
+                    capture_output=True,
+                    text=True
+                )
+                
+                if add_result.returncode == 0:
+                    added_files.append(pattern)
+                    self.logger.info(f"✅ 已添加数据文件: {pattern}")
+                else:
+                    # 如果文件不存在或没有变化，不报错
+                    if "did not match any files" not in add_result.stderr:
+                        self.logger.warning(f"⚠️ 添加文件失败: {pattern} - {add_result.stderr}")
+            
+            if not added_files:
+                self.logger.info("ℹ️ 没有数据文件需要提交（可能都没有变化）")
                 return False
             
             # 生成提交信息
