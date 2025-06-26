@@ -22,6 +22,29 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from config.logger_config import setup_system_logger
 from config.hash_manager import HashManager
 
+# 导入数据库模块
+DATABASE_IMPORT_AVAILABLE = False
+DailyDataImporter = None
+WeeklyDataImporter = None
+MarketStatusImporter = None
+
+def load_database_modules():
+    """动态加载数据库导入模块"""
+    global DATABASE_IMPORT_AVAILABLE, DailyDataImporter, WeeklyDataImporter, MarketStatusImporter
+    try:
+        from ETF_database.importers.daily_importer import DailyDataImporter as _DailyDataImporter
+        from ETF_database.importers.weekly_importer import WeeklyDataImporter as _WeeklyDataImporter
+        from ETF_database.importers.market_status_importer import MarketStatusImporter as _MarketStatusImporter
+        
+        DailyDataImporter = _DailyDataImporter
+        WeeklyDataImporter = _WeeklyDataImporter
+        MarketStatusImporter = _MarketStatusImporter
+        DATABASE_IMPORT_AVAILABLE = True
+        return True
+    except ImportError as e:
+        print(f"⚠️ 数据库导入模块不可用: {e}")
+        return False
+
 class UnifiedETFUpdater:
     def __init__(self):
         """初始化统一更新器"""
@@ -38,7 +61,20 @@ class UnifiedETFUpdater:
         hash_config_path = self.project_root / "config" / "file_hashes.json"
         self.hash_manager = HashManager(str(hash_config_path))
         
+        # 数据库导入配置
+        self.db_config = self.config.get('database_import', {})
+        self.auto_import_enabled = self.db_config.get('enabled', True)
+        
+        # 动态加载数据库模块
+        db_loaded = load_database_modules()
+        
         self.logger.info("统一ETF更新器初始化完成")
+        if db_loaded and self.auto_import_enabled:
+            self.logger.info("✅ 数据库自动导入已启用")
+        elif db_loaded and not self.auto_import_enabled:
+            self.logger.info("ℹ️ 数据库自动导入已禁用")
+        else:
+            self.logger.warning("⚠️ 数据库导入模块不可用")
         
     def auto_git_commit(self, success_modules):
         """自动提交Git更新"""
@@ -152,6 +188,55 @@ class UnifiedETFUpdater:
         except Exception as e:
             self.logger.error(f"自动Git提交时发生异常: {str(e)}")
             return False
+    
+    def run_database_import(self, import_type: str, base_dir: str = None) -> bool:
+        """执行数据库导入"""
+        if not DATABASE_IMPORT_AVAILABLE:
+            self.logger.warning("⚠️ 数据库导入模块不可用，跳过数据库导入")
+            return False
+        
+        if not self.auto_import_enabled:
+            self.logger.info("ℹ️ 数据库自动导入已禁用，跳过")
+            return True
+        
+        self.logger.info(f"📊 开始执行{import_type}数据库导入...")
+        
+        try:
+            if import_type == "daily":
+                importer = DailyDataImporter()
+                base_dir = base_dir or str(self.project_root / "ETF日更")
+                # 只导入最近1天的数据（增量导入）
+                results = importer.import_latest_data_only(base_dir, days_back=1)
+                
+            elif import_type == "weekly":
+                importer = WeeklyDataImporter()
+                base_dir = base_dir or str(self.project_root / "ETF周更")
+                # 只导入最近1周的数据（增量导入）
+                results = importer.import_latest_weekly_data(base_dir, weeks_back=1)
+                
+            elif import_type == "market_status":
+                importer = MarketStatusImporter()
+                json_file = str(self.project_root / "ETF市场状况" / "etf_market_status.json")
+                results = {"market_status": importer.import_json_file(json_file)}
+                
+            else:
+                self.logger.error(f"❌ 不支持的导入类型: {import_type}")
+                return False
+            
+            # 检查导入结果
+            success_count = sum(1 for success in results.values() if success)
+            total_count = len(results)
+            
+            if success_count > 0:
+                self.logger.info(f"✅ {import_type}数据库导入完成: {success_count}/{total_count}")
+                return True
+            else:
+                self.logger.warning(f"⚠️ {import_type}数据库导入无更新: {success_count}/{total_count}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ {import_type}数据库导入失败: {str(e)}")
+            return False
         
     def run_daily_update(self):
         """执行日更流程"""
@@ -185,6 +270,14 @@ class UnifiedETFUpdater:
                 for line in result.stdout.split('\n'):
                     if line.strip():
                         self.logger.info(f"  {line}")
+                
+                # 数据更新成功后，自动导入到数据库
+                db_import_success = self.run_database_import("daily")
+                if db_import_success:
+                    self.logger.info("✅ 日更数据库导入完成")
+                else:
+                    self.logger.warning("⚠️ 日更数据库导入失败或无更新")
+                
                 return True
             else:
                 self.logger.error("❌ ETF日更失败")
@@ -235,6 +328,14 @@ class UnifiedETFUpdater:
                 for line in result.stdout.split('\n'):
                     if line.strip():
                         self.logger.info(f"  {line}")
+                
+                # 数据更新成功后，自动导入到数据库
+                db_import_success = self.run_database_import("weekly")
+                if db_import_success:
+                    self.logger.info("✅ 周更数据库导入完成")
+                else:
+                    self.logger.warning("⚠️ 周更数据库导入失败或无更新")
+                
                 return True
             else:
                 self.logger.error("❌ ETF周更失败")
@@ -284,6 +385,13 @@ class UnifiedETFUpdater:
                         self.logger.info(f"  📊 {line.strip()}")
                     elif '可能已退市的ETF' in line:
                         self.logger.info(f"  🔴 {line.strip()}")
+                
+                # 市场状况更新成功后，自动导入到数据库
+                db_import_success = self.run_database_import("market_status")
+                if db_import_success:
+                    self.logger.info("✅ 市场状况数据库导入完成")
+                else:
+                    self.logger.warning("⚠️ 市场状况数据库导入失败或无更新")
                         
                 return True
             else:
