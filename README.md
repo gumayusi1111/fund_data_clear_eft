@@ -48,6 +48,10 @@ data_clear/
 # 执行完整更新（日更+周更）
 python unified_etf_updater.py
 
+
+# 这一个命令就够了！
+python unified_etf_updater.py --mode update
+
 # 测试系统状态
 python unified_etf_updater.py --mode test
 ```
