@@ -12,8 +12,8 @@ import sys
 import subprocess
 import tempfile
 import shutil
-from datetime import datetime
-from typing import List, Set
+from datetime import datetime, timedelta
+from typing import List, Set, Dict
 
 # 添加config目录到路径
 config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config')
@@ -58,6 +58,108 @@ PROCESSOR_SCRIPT = "daily_etf_processor.py"  # 数据处理脚本
 def get_today_filename() -> str:
     """获取今天的文件名"""
     return datetime.now().strftime('%Y%m%d.csv')
+
+
+def get_recent_filenames(days_back=15) -> List[str]:
+    """获取最近N天的文件名列表"""
+    filenames = []
+    today = datetime.now()
+    
+    for i in range(days_back):
+        date = today - timedelta(days=i)
+        filename = date.strftime('%Y%m%d.csv')
+        filenames.append(filename)
+    
+    return filenames
+
+
+def batch_check_remote_files(bp: ByPy, filenames: List[str]) -> List[str]:
+    """批量检查百度网盘中哪些文件存在"""
+    print(f"🔍 检查百度网盘中最近{len(filenames)}天的文件...")
+    
+    try:
+        import io
+        from contextlib import redirect_stdout
+        
+        # 获取远程文件列表（一次性获取）
+        f = io.StringIO()
+        with redirect_stdout(f):
+            bp.list(BAIDU_REMOTE_BASE)
+        
+        output = f.getvalue()
+        
+        # 解析出所有远程文件名
+        remote_files = set()
+        for line in output.split('\n'):
+            line = line.strip()
+            if line.startswith('F '):
+                parts = line.split(' ', 3)
+                if len(parts) >= 2 and parts[1].endswith('.csv'):
+                    remote_files.add(parts[1])
+        
+        # 检查哪些目标文件存在
+        existing_files = []
+        for filename in filenames:
+            if filename in remote_files:
+                existing_files.append(filename)
+        
+        # 按日期排序（最新的在前）
+        existing_files.sort(reverse=True)
+        
+        print(f"☁️ 远程存在 {len(existing_files)}/{len(filenames)} 个文件")
+        return existing_files
+        
+    except Exception as e:
+        print(f"❌ 批量检查远程文件失败: {e}")
+        return []
+
+
+def check_local_data_exists(date_str: str) -> bool:
+    """检查指定日期的本地数据是否存在"""
+    test_etfs = ["159001.SZ", "159003.SZ", "159005.SZ"]
+    output_dirs = ["0_ETF日K(前复权)", "0_ETF日K(后复权)", "0_ETF日K(除权)"]
+    
+    for etf_code in test_etfs:
+        for output_dir in output_dirs:
+            etf_file = os.path.join(CURRENT_DIR, output_dir, f"{etf_code}.csv")
+            
+            if os.path.exists(etf_file):
+                try:
+                    # 快速检查：只读前几行
+                    with open(etf_file, 'r', encoding='utf-8') as f:
+                        f.readline()  # 跳过表头
+                        for _ in range(5):  # 只检查前5行
+                            line = f.readline().strip()
+                            if line and date_str in line:
+                                return True
+                except Exception:
+                    continue
+    
+    return False
+
+
+def check_local_processed_status(filenames: List[str], hash_manager) -> Dict[str, bool]:
+    """检查本地文件处理状态"""
+    print(f"📊 检查本地处理状态...")
+    
+    status = {}
+    
+    for filename in filenames:
+        date_str = filename[:8]  # YYYYMMDD
+        
+        # 方法1：检查hash记录
+        has_hash_record = hash_manager and hash_manager.is_file_downloaded(filename)
+        
+        # 方法2：检查本地数据完整性
+        has_local_data = check_local_data_exists(date_str)
+        
+        # 任一方法确认存在就认为已处理
+        status[filename] = has_hash_record or has_local_data
+    
+    processed_count = sum(status.values())
+    print(f"💾 本地已处理 {processed_count}/{len(filenames)} 个文件")
+    
+    return status
 
 
 def check_remote_file_exists(bp: ByPy, filename: str) -> bool:
@@ -270,6 +372,155 @@ def daily_incremental_sync():
             print(f"🧽 清理临时目录: {temp_dir}")
 
 
+def detect_missing_data(days_back=15) -> Dict[str, List[str]]:
+    """检测最近N天的缺失数据"""
+    print(f"🚀 开始检测最近{days_back}天的缺失数据...")
+    
+    # 1. 生成要检查的文件名
+    target_filenames = get_recent_filenames(days_back)
+    
+    # 2. 初始化百度网盘和hash管理器
+    try:
+        bp = ByPy()
+        hash_manager = HashManager() if HashManager else None
+    except Exception as e:
+        print(f"❌ 初始化失败: {e}")
+        return {'missing': [], 'existing': [], 'processed': []}
+    
+    # 3. 批量检查远程存在的文件
+    remote_existing = batch_check_remote_files(bp, target_filenames)
+    
+    # 4. 检查本地处理状态
+    local_status = check_local_processed_status(remote_existing, hash_manager)
+    
+    # 5. 找出缺失的文件
+    missing_files = [f for f in remote_existing if not local_status.get(f, False)]
+    processed_files = [f for f in remote_existing if local_status.get(f, False)]
+    
+    result = {
+        'missing': missing_files,        # 需要下载处理的
+        'existing': remote_existing,     # 远程存在的
+        'processed': processed_files     # 已处理的
+    }
+    
+    # 6. 显示结果
+    show_detection_result(result, days_back)
+    
+    return result
+
+
+def show_detection_result(result: Dict[str, List[str]], days_back: int):
+    """显示检测结果"""
+    missing = result['missing']
+    existing = result['existing'] 
+    processed = result['processed']
+    
+    print("\n" + "=" * 50)
+    print(f"📊 最近{days_back}天数据检测结果")
+    print("=" * 50)
+    
+    print(f"☁️ 远程文件总数: {len(existing)}")
+    print(f"✅ 已处理文件数: {len(processed)}")
+    print(f"❌ 缺失文件数: {len(missing)}")
+    
+    if missing:
+        print(f"\n📋 缺失文件明细:")
+        # 按日期排序显示（最新的在前）
+        sorted_missing = sorted(missing, reverse=True)
+        for filename in sorted_missing:
+            date_str = filename[:8]
+            formatted_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+            weekday = datetime.strptime(date_str, '%Y%m%d').strftime('%A')
+            print(f"   📅 {filename} ({formatted_date}, {weekday})")
+        
+        print(f"\n💡 建议命令:")
+        print(f"   python auto_daily_sync.py --mode fill-missing")
+    else:
+        print("\n🎉 数据完整，无缺失!")
+    
+    print("=" * 50)
+
+
+def process_single_missing_file(filename: str) -> bool:
+    """处理单个缺失文件（复用现有逻辑）"""
+    # 创建临时目录
+    temp_dir = tempfile.mkdtemp(prefix="etf_missing_")
+    
+    try:
+        bp = ByPy()
+        hash_manager = HashManager() if HashManager else None
+        
+        # 下载到临时目录
+        temp_file_path = download_to_temp(bp, filename, temp_dir, hash_manager)
+        
+        if temp_file_path:
+            # 处理数据（复用现有函数）
+            return run_processor_with_temp_data(temp_file_path)
+        
+        return False
+        
+    except Exception as e:
+        print(f"✗ 处理文件失败 {filename}: {e}")
+        return False
+        
+    finally:
+        # 清理临时目录
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def batch_fill_missing_files(missing_files: List[str]) -> bool:
+    """批量补齐缺失文件"""
+    if not missing_files:
+        print("✅ 无缺失文件需要补齐")
+        return True
+    
+    print(f"\n🔄 开始批量补齐 {len(missing_files)} 个缺失文件...")
+    
+    # 按日期排序，先处理最新的缺失数据
+    sorted_missing = sorted(missing_files, reverse=True)
+    
+    success_count = 0
+    for i, filename in enumerate(sorted_missing, 1):
+        print(f"\n[{i}/{len(missing_files)}] 处理 {filename}...")
+        
+        # 使用现有的下载处理逻辑
+        if process_single_missing_file(filename):
+            success_count += 1
+    
+    print(f"\n🎉 批量补漏完成: {success_count}/{len(missing_files)}")
+    return success_count > 0
+
+
+def smart_daily_update(days_back=15):
+    """智能日更新：先补漏，再更新今天"""
+    print("🚀 智能日更新模式...")
+    
+    # 1. 检测缺失
+    result = detect_missing_data(days_back)
+    
+    # 2. 补齐缺失
+    missing_success = True
+    if result['missing']:
+        print(f"\n发现 {len(result['missing'])} 个缺失文件，开始补齐...")
+        missing_success = batch_fill_missing_files(result['missing'])
+    
+    # 3. 执行今天的更新
+    print(f"\n📅 执行今日常规更新...")
+    today_success = daily_incremental_sync()
+    
+    # 4. 汇总结果
+    if missing_success and today_success:
+        print("🎉 智能更新完全成功！")
+        return True
+    elif today_success:
+        print("✅ 今日更新成功，但缺失数据补齐可能有问题")
+        return True
+    else:
+        print("⚠️ 智能更新部分失败")
+        return False
+
+
 def test_connection():
     """测试百度网盘连接"""
     print("🔧 测试百度网盘连接...")
@@ -313,13 +564,30 @@ def test_connection():
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description='ETF日更新自动同步脚本（临时处理版）')
-    parser.add_argument('--mode', choices=['daily', 'test'], default='daily',
-                        help='运行模式: daily(每日更新), test(测试连接)')
+    parser = argparse.ArgumentParser(description='ETF日更新自动同步脚本（增强版）')
+    parser.add_argument('--mode', 
+                        choices=['daily', 'test', 'check-missing', 'fill-missing', 'smart-update'], 
+                        default='daily',
+                        help='运行模式: daily(每日更新), test(测试连接), check-missing(检查缺失), fill-missing(补齐缺失), smart-update(智能更新)')
+    parser.add_argument('--days-back', type=int, default=15, 
+                        help='检查最近N天的数据（默认15天）')
     
     args = parser.parse_args()
     
     if args.mode == 'test':
         test_connection()
-    elif args.mode == 'daily':
+    elif args.mode == 'check-missing':
+        # 只检测，不处理
+        detect_missing_data(args.days_back)
+    elif args.mode == 'fill-missing':
+        # 检测并补漏
+        result = detect_missing_data(args.days_back)
+        if result['missing']:
+            batch_fill_missing_files(result['missing'])
+        else:
+            print("✅ 无缺失数据需要补齐")
+    elif args.mode == 'smart-update':
+        # 智能更新：先检测补漏，再更新今天
+        smart_daily_update(args.days_back)
+    else:  # daily
         daily_incremental_sync() 

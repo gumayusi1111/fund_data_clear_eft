@@ -260,9 +260,9 @@ class UnifiedETFUpdater:
             return False
         
     def run_daily_update(self):
-        """执行日更流程（智能跳过）"""
+        """执行日更流程（智能模式：自动检测和补漏）"""
         self.logger.info("=" * 50)
-        self.logger.info("开始执行ETF日更流程（智能检查）")
+        self.logger.info("开始执行ETF日更流程（智能模式）")
         self.logger.info("=" * 50)
         try:
             daily_script = self.project_root / "ETF日更" / "auto_daily_sync.py"
@@ -270,7 +270,8 @@ class UnifiedETFUpdater:
                 self.logger.error(f"日更脚本不存在: {daily_script}")
                 return False, "脚本不存在"
             daily_dir = self.project_root / "ETF日更"
-            cmd = [sys.executable, "auto_daily_sync.py"]
+            # 使用智能更新模式，自动检测最近7天的缺失数据并补漏
+            cmd = [sys.executable, "auto_daily_sync.py", "--mode", "smart-update", "--days-back", "7"]
             result = subprocess.run(
                 cmd,
                 cwd=str(daily_dir),
@@ -282,14 +283,14 @@ class UnifiedETFUpdater:
             if "没有找到今天的文件" in output or "未找到任何文件" in output:
                 self.logger.info("📅 今天无新数据，智能跳过日更")
                 return False, "无新数据"
-            if "所有文件都已是最新" in output or "无需下载" in output:
-                self.logger.info("📅 日更数据已是最新，智能跳过")
+            if "数据完整，无缺失" in output and "已是最新" in output:
+                self.logger.info("📅 日更数据已是最新，无缺失数据")
                 return False, "已是最新"
-            if result.returncode == 0 and ("处理完成" in output or "下载完成" in output or "合并完成" in output):
-                self.logger.info("✅ ETF日更完成（有新数据）")
+            if result.returncode == 0 and ("智能更新完全成功" in output or "智能更新" in output or "处理完成" in output):
+                self.logger.info("✅ ETF智能日更完成（有数据更新）")
                 return True, "有新数据"
             else:
-                self.logger.error("❌ ETF日更失败")
+                self.logger.error("❌ ETF智能日更失败")
                 if result.stderr:
                     self.logger.error(f"错误: {result.stderr[:200]}...")
                 return False, "执行失败"
