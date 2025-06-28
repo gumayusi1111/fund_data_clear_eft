@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ETF数据读取器模块
-================
+ETF数据读取器模块 - 科学严谨版
+==========================
 
-专门负责ETF数据的读取、验证和预处理
+🔬 科学数据读取:
+- 严格50行数据限制 (科学标准)
+- 临时读取，计算完立即清理
+- 支持筛选结果和全量数据两种模式
+- 100%保护原始数据
 """
 
-import pandas as pd
 import os
-import gc
-from typing import Optional, Tuple, List
+import pandas as pd
+from typing import List, Optional, Tuple, Dict
 from .config import WMAConfig
 
 
 class ETFDataReader:
-    """ETF数据读取器"""
+    """ETF数据读取器 - 科学严谨版本"""
     
     def __init__(self, config: WMAConfig):
         """
@@ -27,6 +30,57 @@ class ETFDataReader:
         self.config = config
         print("📖 数据读取器初始化完成")
     
+    def get_screening_etf_codes(self, threshold: str = "3000万门槛") -> List[str]:
+        """
+        获取ETF初筛通过的ETF代码列表
+        
+        Args:
+            threshold: 门槛类型 ("3000万门槛" 或 "5000万门槛")
+            
+        Returns:
+            List[str]: 通过筛选的ETF代码列表
+            
+        🔬 新功能: 基于ETF初筛结果获取数据源
+        """
+        # 🔬 智能路径计算：从WMA目录找到ETF初筛目录
+        if "加权移动平均线" in os.getcwd():
+            # 从加权移动平均线目录: ../../../ETF_初筛/data
+            screening_data_path = "../../../ETF_初筛/data"
+        else:
+            # 从项目根目录: ./ETF_初筛/data  
+            screening_data_path = "./ETF_初筛/data"
+        
+        screening_file = os.path.join(screening_data_path, threshold, "通过筛选ETF.txt")
+        
+        try:
+            etf_codes = []
+            with open(screening_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                
+                # 跳过第一行注释
+                for line in lines[1:]:
+                    etf_code = line.strip()
+                    if etf_code:  # 跳过空行
+                        # 🔬 标准化ETF代码格式：添加交易所后缀
+                        if '.' not in etf_code:
+                            if etf_code.startswith('5'):
+                                etf_code = f"{etf_code}.SH"  # 上交所
+                            else:
+                                etf_code = f"{etf_code}.SZ"  # 深交所
+                        etf_codes.append(etf_code)
+            
+            print(f"📊 成功读取{threshold}筛选结果: {len(etf_codes)}个ETF")
+            print(f"   📁 数据源: {screening_file}")
+            
+            return etf_codes
+            
+        except FileNotFoundError:
+            print(f"❌ 筛选结果文件不存在: {screening_file}")
+            return []
+        except Exception as e:
+            print(f"❌ 读取筛选结果失败: {e}")
+            return []
+    
     def get_available_etfs(self) -> List[str]:
         """
         获取可用的ETF代码列表
@@ -35,160 +89,149 @@ class ETFDataReader:
             List[str]: 可用的ETF代码列表
         """
         if not os.path.exists(self.config.data_path):
+            print(f"❌ 数据路径不存在: {self.config.data_path}")
             return []
         
-        try:
-            files = [f for f in os.listdir(self.config.data_path) if f.endswith('.csv')]
-            etf_codes = [f.replace('.csv', '') for f in files]
-            return sorted(etf_codes)
-        except Exception as e:
-            print(f"❌ 获取ETF列表失败: {e}")
-            return []
+        etf_codes = []
+        for file in os.listdir(self.config.data_path):
+            if file.endswith('.csv'):
+                etf_code = file.replace('.csv', '')
+                etf_codes.append(etf_code)
+        
+        return sorted(etf_codes)
     
-    def validate_etf_file(self, etf_code: str) -> bool:
+    def read_etf_data(self, etf_code: str) -> Optional[Tuple[pd.DataFrame, int]]:
         """
-        验证ETF文件是否存在
+        读取ETF数据 - 科学严谨版本
         
         Args:
             etf_code: ETF代码
             
         Returns:
-            bool: 文件是否存在
+            Tuple[pd.DataFrame, int]: (数据DataFrame, 总行数) 或 None
+            
+        🔬 科学特性:
+        - 严格50行数据限制
+        - 临时读取，不修改原始文件
+        - 自动内存清理
         """
         file_path = self.config.get_file_path(etf_code)
         
         if not os.path.exists(file_path):
             print(f"❌ 文件不存在: {file_path}")
-            
-            # 提供可用ETF提示
-            available_etfs = self.get_available_etfs()
-            if available_etfs:
-                print(f"💡 可用的ETF代码 (前5个): {available_etfs[:5]}")
-                if len(available_etfs) > 5:
-                    print(f"   还有 {len(available_etfs)-5} 个ETF可用...")
-            return False
+            return None
         
-        return True
+        try:
+            print(f"📖 优化读取: 只读取最新{self.config.required_rows}行数据")
+            
+            # 🔬 科学读取：先获取总行数
+            with open(file_path, 'r', encoding='utf-8') as f:
+                total_lines = sum(1 for _ in f) - 1  # 减去表头
+            
+            # 🔬 高效读取：只读取最新的required_rows行
+            skip_rows = max(0, total_lines - self.config.required_rows)
+            
+            df = pd.read_csv(
+                file_path, 
+                encoding='utf-8',
+                skiprows=range(1, skip_rows + 1) if skip_rows > 0 else None
+            )
+            
+            if df.empty:
+                print(f"❌ 数据为空: {etf_code}")
+                return None
+            
+            print(f"📊 数据优化: {etf_code} - 从{total_lines}行优化为{len(df)}行")
+            efficiency_gain = ((total_lines - len(df)) / total_lines * 100) if total_lines > len(df) else 0
+            print(f"⚡ 效率提升: {efficiency_gain:.1f}% (读取最新{len(df)}行)")
+            
+            return df, total_lines
+            
+        except Exception as e:
+            print(f"❌ 读取失败 {etf_code}: {e}")
+            return None
     
-    def read_etf_data(self, etf_code: str) -> Optional[Tuple[pd.DataFrame, int]]:
+    def read_etf_full_data(self, etf_code: str) -> Optional[pd.DataFrame]:
         """
-        读取ETF数据（只读取必要行数）
+        读取ETF完整历史数据 - 用于生成历史文件
         
         Args:
             etf_code: ETF代码
             
         Returns:
-            Tuple[pd.DataFrame, int]: (处理后的数据, 原始总行数) 或 None
+            pd.DataFrame: 完整数据DataFrame 或 None
             
-        🚀 优化说明:
-        - 只读取最新的必要行数，而不是全部数据
-        - 大幅减少内存使用和处理时间
-        - 保持计算精度不变
+        🔬 用途: 生成包含历史数据的单独文件
         """
-        if not self.validate_etf_file(etf_code):
-            return None
-        
         file_path = self.config.get_file_path(etf_code)
         
+        if not os.path.exists(file_path):
+            print(f"❌ 文件不存在: {file_path}")
+            return None
+        
         try:
-            print(f"📖 优化读取: 只读取最新{self.config.required_rows}行数据")
+            df = pd.read_csv(file_path, encoding='utf-8')
             
-            # 读取完整数据以获取总行数
-            df_temp = pd.read_csv(file_path)
-            total_rows = len(df_temp)
+            if df.empty:
+                print(f"❌ 数据为空: {etf_code}")
+                return None
             
-            # 🔬 只保留最新的必要行数（修复：应该用head获取最新数据）
-            if total_rows > self.config.required_rows:
-                df_temp = df_temp.head(self.config.required_rows).copy()
-                print(f"📊 数据优化: {etf_code} - 从{total_rows}行优化为{len(df_temp)}行")
-                efficiency = ((total_rows - len(df_temp)) / total_rows * 100)
-                print(f"⚡ 效率提升: {efficiency:.1f}% (读取最新{self.config.required_rows}行)")
-            else:
-                print(f"📊 数据读取: {etf_code} - {total_rows}行（全部数据）")
-            
-            # 数据预处理
-            processed_df = self._preprocess_data(df_temp)
-            
-            return processed_df, total_rows
+            print(f"📊 完整数据读取: {etf_code} - {len(df)}行历史数据")
+            return df
             
         except Exception as e:
-            print(f"❌ 读取文件失败: {e}")
+            print(f"❌ 完整数据读取失败 {etf_code}: {e}")
             return None
     
-    def _preprocess_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        数据预处理
-        
-        Args:
-            df: 原始数据
-            
-        Returns:
-            pd.DataFrame: 处理后的数据
-        """
-        # 日期格式转换
-        df['日期'] = pd.to_datetime(df['日期'], format='%Y%m%d')
-        
-        # 🔬 按日期排序（确保时间序列正确：最旧→最新）
-        df = df.sort_values('日期').reset_index(drop=True)
-        
-        # 数据类型优化
-        numeric_columns = ['开盘价', '最高价', '最低价', '收盘价', '上日收盘', '涨跌', '涨幅%']
-        for col in numeric_columns:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-        
-        return df
-    
-    def get_latest_price_info(self, df: pd.DataFrame) -> dict:
+    def get_latest_price_info(self, df: pd.DataFrame) -> Dict:
         """
         获取最新价格信息
         
         Args:
-            df: 处理后的数据
+            df: 数据DataFrame
             
         Returns:
-            dict: 最新价格信息
+            Dict: 最新价格信息
         """
         if df.empty:
-            return {}
+            return {'date': '', 'close': 0.0, 'change_pct': 0.0}
         
-        latest_data = df.iloc[-1]
+        latest_row = df.iloc[-1]
         
         return {
-            'date': latest_data['日期'].strftime('%Y-%m-%d'),
-            'close': float(latest_data['收盘价']),
-            'change': float(latest_data['涨跌']),
-            'change_pct': float(latest_data['涨幅%']),
-            'volume': float(latest_data.get('成交量(手数)', 0)),
-            'amount': float(latest_data.get('成交额(千元)', 0))
+            'date': str(latest_row.get('日期', '')),
+            'close': float(latest_row.get('收盘价', 0)),
+            'change_pct': float(latest_row.get('涨幅%', 0))
         }
     
-    def get_date_range(self, df: pd.DataFrame) -> dict:
+    def get_date_range(self, df: pd.DataFrame) -> Dict:
         """
         获取数据日期范围
         
         Args:
-            df: 处理后的数据
+            df: 数据DataFrame
             
         Returns:
-            dict: 日期范围信息
+            Dict: 日期范围信息
         """
         if df.empty:
-            return {}
+            return {'start_date': '', 'end_date': '', 'total_days': 0}
         
         return {
-            'start_date': df['日期'].min().strftime('%Y-%m-%d'),
-            'end_date': df['日期'].max().strftime('%Y-%m-%d'),
-            'analysis_days': len(df)
+            'start_date': str(df.iloc[0].get('日期', '')),
+            'end_date': str(df.iloc[-1].get('日期', '')),
+            'total_days': len(df)
         }
     
     def cleanup_memory(self, df: pd.DataFrame):
         """
-        清理内存
+        清理内存 - 科学严谨版本
         
         Args:
-            df: 要清理的数据框
+            df: 要清理的DataFrame
+            
+        🔬 科学内存管理: 确保临时数据完全清理
         """
-        del df
-        gc.collect()
-        print("��️  临时数据已清理，内存释放完成") 
+        if df is not None:
+            del df
+        print("�� 临时数据已清理，内存释放完成") 

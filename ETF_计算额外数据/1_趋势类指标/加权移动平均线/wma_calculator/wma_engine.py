@@ -169,14 +169,111 @@ class WMAEngine:
                 print(f"  ❌ WMA{period} 计算异常: {str(e)}")
                 wma_results[f'WMA_{period}'] = None
         
+        # 🆕 计算WMA差值 (wmadiff)
+        wmadiff_results = self.calculate_wma_diff(wma_results)
+        wma_results.update(wmadiff_results)
+        
         # 🔬 科学统计：计算成功率
         total_periods = len(self.config.wma_periods)
-        successful_calcs = sum(1 for v in wma_results.values() if v is not None)
+        successful_calcs = sum(1 for k, v in wma_results.items() if k.startswith('WMA_') and v is not None)
         success_rate = (successful_calcs / total_periods) * 100
         
         print(f"🔬 WMA计算完成: {successful_calcs}/{total_periods} 成功 (成功率: {success_rate:.1f}%)")
         
         return wma_results
+    
+    def calculate_wma_diff(self, wma_results: Dict[str, Optional[float]]) -> Dict[str, Optional[float]]:
+        """
+        计算WMA差值指标 - 科学严谨版本
+        
+        Args:
+            wma_results: WMA计算结果
+            
+        Returns:
+            Dict[str, Optional[float]]: WMA差值结果
+            
+        🔬 WMA差值科学定义:
+        - WMA_DIFF_5_20: WMA5 - WMA20 (短期减长期，核心趋势强度指标)
+        - WMA_DIFF_3_5: WMA3 - WMA5 (超短期动量指标)
+        
+        💡 技术分析意义:
+        - 正值: 短期强于长期，上升趋势
+        - 负值: 短期弱于长期，下降趋势  
+        - 接近0: 趋势不明确，震荡行情
+        """
+        print("🔬 开始计算WMA差值指标...")
+        wmadiff_results = {}
+        
+        # 🔬 科学配置：只保留核心差值组合
+        diff_pairs = [
+            (5, 20, "WMA_DIFF_5_20"),    # 核心趋势指标：短期vs长期
+            (3, 5, "WMA_DIFF_3_5"),      # 超短期动量指标
+        ]
+        
+        for short_period, long_period, diff_key in diff_pairs:
+            try:
+                short_wma = wma_results.get(f'WMA_{short_period}')
+                long_wma = wma_results.get(f'WMA_{long_period}')
+                
+                if short_wma is not None and long_wma is not None:
+                    # 🔬 科学计算：短期WMA - 长期WMA
+                    diff_value = short_wma - long_wma
+                    
+                    # 🔬 科学精度：保留6位小数
+                    diff_value = round(diff_value, 6)
+                    wmadiff_results[diff_key] = diff_value
+                    
+                    # 📊 科学解释
+                    trend_strength = abs(diff_value)
+                    if diff_value > 0:
+                        trend_desc = f"上升趋势 (强度: {trend_strength:.6f})"
+                    elif diff_value < 0:
+                        trend_desc = f"下降趋势 (强度: {trend_strength:.6f})"
+                    else:
+                        trend_desc = "平衡状态"
+                    
+                    print(f"  ✅ {diff_key}: {diff_value:.6f} → {trend_desc}")
+                else:
+                    wmadiff_results[diff_key] = None
+                    print(f"  ❌ {diff_key}: 缺少必要的WMA数据 (WMA{short_period}: {short_wma}, WMA{long_period}: {long_wma})")
+                    
+            except Exception as e:
+                print(f"  ❌ {diff_key} 计算异常: {str(e)}")
+                wmadiff_results[diff_key] = None
+        
+        # 🔬 计算相对差值百分比 (便于不同价格水平的ETF比较)
+        self._calculate_relative_wmadiff(wma_results, wmadiff_results)
+        
+        return wmadiff_results
+    
+    def _calculate_relative_wmadiff(self, wma_results: Dict, wmadiff_results: Dict):
+        """
+        计算相对WMA差值百分比
+        
+        Args:
+            wma_results: WMA原始结果
+            wmadiff_results: WMA差值结果 (会被修改)
+            
+        🔬 科学意义:
+        - 相对差值消除价格水平影响，便于跨ETF比较
+        - 公式: (短期WMA - 长期WMA) / 长期WMA * 100%
+        """
+        try:
+            # 计算WMA5-20的相对差值百分比
+            if wmadiff_results.get('WMA_DIFF_5_20') is not None and wma_results.get('WMA_20') is not None:
+                diff_abs = wmadiff_results['WMA_DIFF_5_20']
+                wma20 = wma_results['WMA_20']
+                
+                if wma20 != 0:
+                    relative_diff_pct = (diff_abs / wma20) * 100
+                    wmadiff_results['WMA_DIFF_5_20_PCT'] = round(relative_diff_pct, 4)
+                    print(f"  ✅ WMA_DIFF_5_20_PCT: {relative_diff_pct:.4f}% (相对差值)")
+                else:
+                    wmadiff_results['WMA_DIFF_5_20_PCT'] = None
+                    
+        except Exception as e:
+            print(f"  ⚠️  相对差值计算警告: {str(e)}")
+            wmadiff_results['WMA_DIFF_5_20_PCT'] = None
     
     def verify_wma_calculation(self, prices: pd.Series, period: int, expected_wma: float) -> Tuple[bool, float]:
         """

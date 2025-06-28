@@ -13,6 +13,8 @@ from .data_reader import ETFDataReader
 from .wma_engine import WMAEngine
 from .signal_analyzer import SignalAnalyzer
 from .file_manager import FileManager
+import os
+from datetime import datetime
 
 
 class WMAController:
@@ -262,10 +264,168 @@ class WMAController:
                 if wma_val:
                     print(f"WMA{period}:{wma_val:.3f} ", end="")
             print()
+            
+            # 🆕 显示WMA差值信息
+            wmadiff_5_20 = wma_values.get('WMA_DIFF_5_20')
+            wmadiff_5_20_pct = wma_values.get('WMA_DIFF_5_20_PCT')
+            wmadiff_3_5 = wma_values.get('WMA_DIFF_3_5')
+            
+            if wmadiff_5_20 is not None:
+                trend_icon = "📈" if wmadiff_5_20 > 0 else ("📉" if wmadiff_5_20 < 0 else "➡️")
+                print(f"   📊 WMA差值: 5-20={wmadiff_5_20:+.6f} ({wmadiff_5_20_pct:+.2f}%) {trend_icon}")
+                
+                if wmadiff_3_5 is not None:
+                    print(f"              3-5={wmadiff_3_5:+.6f} (超短期动量)")
+            
             print(f"   🔄 排列: {signals['alignment']}")
             
             if 'trading_signals' in signals:
                 trading = signals['trading_signals']
                 print(f"   🎯 信号: {trading['primary_signal']} (强度:{trading['signal_strength']}, 置信度:{trading['confidence_level']:.0f}%)")
         
-        return result 
+        return result
+    
+    def process_screening_results(self, thresholds: List[str] = None, 
+                                include_advanced_analysis: bool = False) -> Dict[str, List[Dict]]:
+        """
+        处理ETF筛选结果的WMA计算
+        
+        Args:
+            thresholds: 门槛列表，默认为 ["3000万门槛", "5000万门槛"]
+            include_advanced_analysis: 是否包含高级分析
+            
+        Returns:
+            Dict[str, List[Dict]]: 各门槛的计算结果 {threshold: [results_list]}
+            
+        🔬 新功能: 基于ETF初筛结果进行批量WMA计算
+        """
+        if thresholds is None:
+            thresholds = ["3000万门槛", "5000万门槛"]
+        
+        screening_results = {}
+        
+        for threshold in thresholds:
+            print(f"\n{'='*60}")
+            print(f"🔄 处理{threshold}筛选结果")
+            print(f"{'='*60}")
+            
+            # 获取筛选通过的ETF代码
+            etf_codes = self.data_reader.get_screening_etf_codes(threshold)
+            
+            if not etf_codes:
+                print(f"❌ {threshold}: 没有找到筛选结果")
+                screening_results[threshold] = []
+                continue
+            
+            print(f"📊 {threshold}: 找到 {len(etf_codes)} 个通过筛选的ETF")
+            
+            # 批量处理这些ETF
+            results = self.process_multiple_etfs(etf_codes, include_advanced_analysis)
+            screening_results[threshold] = results
+            
+            print(f"✅ {threshold}: 成功计算 {len(results)}/{len(etf_codes)} 个ETF")
+        
+        return screening_results
+    
+    def calculate_and_save_screening_results(self, thresholds: List[str] = None, 
+                                           output_dir: Optional[str] = None,
+                                           include_advanced_analysis: bool = False) -> Dict[str, Any]:
+        """
+        计算并保存基于筛选结果的WMA数据 - 只保存ETF完整历史数据文件
+        
+        Args:
+            thresholds: 门槛列表
+            output_dir: 输出目录（可选）
+            include_advanced_analysis: 是否包含高级分析
+            
+        Returns:
+            Dict[str, Any]: 处理结果摘要
+            
+        🔬 完整流程: 筛选结果读取 → WMA计算 → 完整历史数据文件生成（按时间倒序）
+        """
+        print("🚀 开始基于ETF筛选结果的WMA批量计算...")
+        
+        # 处理筛选结果
+        screening_results = self.process_screening_results(thresholds, include_advanced_analysis)
+        
+        if not any(results for results in screening_results.values()):
+            print("❌ 没有成功处理的筛选结果")
+            return {'success': False, 'message': '没有成功处理的筛选结果'}
+        
+        # 🔬 智能输出目录处理
+        if output_dir:
+            output_dir = self.file_manager.create_output_directory(output_dir)
+        else:
+            # 使用配置中的智能路径
+            output_dir = self.file_manager.create_output_directory(self.config.default_output_dir)
+        
+        # 保存结果 - 只保存ETF历史数据文件
+        from .result_processor import ResultProcessor
+        result_processor = ResultProcessor(self.config)
+        
+        # 保存筛选批量结果（每个ETF一个完整历史数据文件）
+        save_stats = result_processor.save_screening_batch_results(screening_results, output_dir)
+        
+        # 显示结果摘要
+        self._display_screening_results_summary(screening_results)
+        
+        # 显示文件摘要
+        self.file_manager.show_output_summary(output_dir)
+        
+        # 计算整体统计
+        total_etfs = sum(len(results) for results in screening_results.values())
+        total_thresholds = len([t for t in screening_results if screening_results[t]])
+        
+        return {
+            'success': True,
+            'total_etfs_processed': total_etfs,
+            'thresholds_processed': total_thresholds,
+            'output_directory': output_dir,
+            'save_statistics': save_stats,
+            'screening_results': screening_results
+        }
+    
+    def _save_screening_summary_csv(self, screening_results: Dict, output_dir: str):
+        """保存筛选结果汇总CSV - 已移除此功能"""
+        # 🔬 功能移除：不再生成汇总CSV文件，用户只需要ETF历史数据文件
+        pass
+    
+    def _display_screening_results_summary(self, screening_results: Dict):
+        """显示筛选结果摘要"""
+        print(f"\n📊 ETF筛选结果WMA计算摘要")
+        print("=" * 80)
+        
+        for threshold, results_list in screening_results.items():
+            if not results_list:
+                print(f"\n❌ {threshold}: 无有效结果")
+                continue
+                
+            print(f"\n✅ {threshold}: {len(results_list)} 个ETF完整历史数据文件")
+            
+            # 显示前5个代表性结果
+            print(f"   🎯 代表性ETF结果:")
+            for i, result in enumerate(results_list[:5], 1):
+                latest = result['latest_price']
+                wma_values = result['wma_values']
+                
+                print(f"   {i}. {result['etf_code']}: 最新价格{latest['close']:.3f} ", end="")
+                
+                # 显示主要WMA值
+                for period in [5, 20]:  # 显示核心周期
+                    wma_val = wma_values.get(f'WMA_{period}')
+                    if wma_val:
+                        print(f"WMA{period}:{wma_val:.3f} ", end="")
+                
+                # 显示WMA差值
+                wmadiff_5_20 = wma_values.get('WMA_DIFF_5_20')
+                if wmadiff_5_20 is not None:
+                    trend_icon = "📈" if wmadiff_5_20 > 0 else "📉" 
+                    print(f"差值:{wmadiff_5_20:+.4f} {trend_icon}")
+                else:
+                    print()
+            
+            if len(results_list) > 5:
+                print(f"   ... 还有 {len(results_list) - 5} 个ETF")
+        
+        total_etfs = sum(len(results) for results in screening_results.values())
+        print(f"\n🎯 总计: {total_etfs} 个ETF，每个都包含完整历史WMA数据（按时间倒序）") 

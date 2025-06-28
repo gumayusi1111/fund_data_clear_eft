@@ -224,6 +224,43 @@ class SignalAnalyzer:
                 signal_score -= 1
                 signal_details.append("弱势空头(-1)")
             
+            # 🆕 WMA差值信号分析
+            wmadiff_5_20 = wma_results.get('WMA_DIFF_5_20')
+            wmadiff_5_20_pct = wma_results.get('WMA_DIFF_5_20_PCT')
+            
+            if wmadiff_5_20 is not None and wmadiff_5_20_pct is not None:
+                # 基于绝对差值的信号
+                if wmadiff_5_20 > 0.01:  # 显著正差值
+                    signal_score += 1
+                    signal_details.append(f"WMA差值显著为正({wmadiff_5_20:+.4f})(+1)")
+                elif wmadiff_5_20 < -0.01:  # 显著负差值
+                    signal_score -= 1
+                    signal_details.append(f"WMA差值显著为负({wmadiff_5_20:+.4f})(-1)")
+                
+                # 基于相对差值百分比的信号（更重要）
+                if wmadiff_5_20_pct > 1.0:  # 相对差值超过1%，强烈上升信号
+                    signal_score += 1
+                    signal_details.append(f"WMA相对差值强烈上升({wmadiff_5_20_pct:+.2f}%)(+1)")
+                elif wmadiff_5_20_pct > 0.5:  # 相对差值超过0.5%，温和上升信号
+                    signal_score += 0.5
+                    signal_details.append(f"WMA相对差值温和上升({wmadiff_5_20_pct:+.2f}%)(+0.5)")
+                elif wmadiff_5_20_pct < -1.0:  # 相对差值低于-1%，强烈下降信号
+                    signal_score -= 1
+                    signal_details.append(f"WMA相对差值强烈下降({wmadiff_5_20_pct:+.2f}%)(-1)")
+                elif wmadiff_5_20_pct < -0.5:  # 相对差值低于-0.5%，温和下降信号
+                    signal_score -= 0.5
+                    signal_details.append(f"WMA相对差值温和下降({wmadiff_5_20_pct:+.2f}%)(-0.5)")
+            
+            # 🆕 短期WMA差值信号 (WMA3-5)
+            wmadiff_3_5 = wma_results.get('WMA_DIFF_3_5')
+            if wmadiff_3_5 is not None:
+                if wmadiff_3_5 > 0.002:  # 超短期差值为正，短期加速
+                    signal_score += 0.5
+                    signal_details.append(f"超短期WMA加速上升({wmadiff_3_5:+.4f})(+0.5)")
+                elif wmadiff_3_5 < -0.002:  # 超短期差值为负，短期减速
+                    signal_score -= 0.5
+                    signal_details.append(f"超短期WMA加速下降({wmadiff_3_5:+.4f})(-0.5)")
+            
             # 趋势一致性信号
             overall_trend = trend_analysis.get('overall_trend', '震荡趋势')
             consistency = trend_analysis.get('trend_consistency', 0)

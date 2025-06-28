@@ -20,12 +20,23 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例:
-  python -m wma_calculator                         # 使用默认ETF和前复权
-  python -m wma_calculator 510050.SH               # 计算上证50ETF（前复权）
-  python -m wma_calculator --adj-type 后复权        # 使用后复权数据
-  python -m wma_calculator 510050.SH --adj-type 除权  # 指定ETF和复权类型
-  python -m wma_calculator --list                  # 显示可用ETF列表
-  python -m wma_calculator --quick 510050.SH       # 快速分析（不保存文件）
+  # 📊 默认模式：ETF筛选结果批量计算
+  python wma_main.py                               # 【默认】计算所有筛选结果（3000万+5000万门槛）
+  python wma_main.py --threshold 3000万门槛          # 【默认】仅计算3000万门槛
+  python wma_main.py --threshold 5000万门槛          # 【默认】仅计算5000万门槛
+  python wma_main.py --adj-type 后复权              # 【默认】使用后复权数据
+
+  # 🎯 指定ETF计算
+  python wma_main.py 510050.SH                     # 计算指定ETF（上证50）
+  python wma_main.py 510050.SH --adj-type 除权      # 指定ETF和复权类型
+  
+  # 🔧 工具功能
+  python wma_main.py --list                        # 显示可用ETF列表
+  python wma_main.py --quick 510050.SH             # 快速分析（不保存文件）
+
+  # 🆕 显式筛选模式（等同于默认模式）
+  python wma_main.py --screening                   # 计算所有筛选结果
+  python wma_main.py --screening --threshold 3000万门槛  # 仅计算3000万门槛
 
 特点:
   - 模块化架构，高内聚低耦合
@@ -34,6 +45,7 @@ def parse_arguments():
   - 临时数据处理，计算完立即清理
   - 只生成精简结果文件
   - 保护原始数据，100%安全
+  - 🆕 支持基于ETF初筛结果的批量计算
         """
     )
     
@@ -76,6 +88,19 @@ def parse_arguments():
         help='包含高级分析（趋势分析、交易信号等）'
     )
     
+    # 🆕 基于筛选结果的新选项
+    parser.add_argument(
+        '--screening', '-s',
+        action='store_true',
+        help='🆕 基于ETF筛选结果进行批量计算'
+    )
+    
+    parser.add_argument(
+        '--threshold', '-t',
+        choices=['3000万门槛', '5000万门槛'],
+        help='🆕 指定门槛类型（仅在--screening模式下有效）'
+    )
+    
     parser.add_argument(
         '--output', '-o',
         default='output',
@@ -96,12 +121,15 @@ def main():
     - 支持三种复权类型选择
     - 只生成精简结果文件
     - 原始数据100%安全，内存使用最优
+    - 🆕 支持基于ETF筛选结果的批量计算
     """
     print("🚀 WMA计算器 (模块化版本)")
     print("=" * 60)
+    print("📊 默认模式: ETF筛选结果批量计算 (293个+227个ETF)")
     print("📦 架构特点: 高内聚低耦合，组件化设计")
     print("⚡ 数据优化: 只读取必要行数，大幅提高效率")
     print("🛡️ 临时数据处理: 读取→计算→清理→精简结果")
+    print("💾 输出格式: 每个ETF独立历史文件 + WMA指标")
     print("=" * 60)
     
     # 解析命令行参数
@@ -114,6 +142,97 @@ def main():
             wma_periods=args.periods,
             output_dir=None  # 🔬 使用配置中的智能输出路径
         )
+        
+        # 📊 默认执行ETF筛选结果批量计算（替代单个ETF测试模式）
+        if not args.list and not args.quick and not args.etf_codes:
+            # 🚀 默认模式：筛选批量计算
+            print("🔍 默认模式：ETF筛选结果批量计算...")
+            
+            # 确定要处理的门槛
+            if args.threshold:
+                thresholds = [args.threshold]
+                print(f"📊 指定门槛: {args.threshold}")
+            else:
+                thresholds = ["3000万门槛", "5000万门槛"]
+                print(f"📊 处理所有门槛: {', '.join(thresholds)}")
+            
+            # 执行筛选结果批量计算
+            result_summary = controller.calculate_and_save_screening_results(
+                thresholds=thresholds,
+                output_dir=None,  # 🔬 使用配置中的智能输出路径
+                include_advanced_analysis=args.advanced
+            )
+            
+            # 输出筛选批量处理结果
+            print("\n" + "=" * 60)
+            if result_summary['success']:
+                print(f"✅ ETF筛选批量计算完成! 成功处理 {result_summary['total_etfs_processed']} 个ETF")
+                print(f"📊 门槛数量: {result_summary['thresholds_processed']}")
+                print(f"📁 输出目录: {result_summary['output_directory']}")
+                
+                # 显示保存统计
+                save_stats = result_summary['save_statistics']
+                print(f"💾 历史文件: {save_stats['total_files_saved']} 个")
+                print(f"💿 总大小: {save_stats['total_size_bytes'] / 1024 / 1024:.1f} MB")
+                
+                print(f"\n🛡️ 数据处理确认:")
+                print(f"   - 基于ETF初筛结果进行批量计算")
+                print(f"   - 每个ETF生成独立的历史数据文件")
+                print(f"   - 包含完整历史数据 + 最新WMA指标")
+                print(f"   - 按门槛分类保存到对应目录")
+                print(f"   - 复权类型: {args.adj_type}")
+                print(f"   - 模块化架构: 组件职责清晰")
+                
+            else:
+                print(f"❌ ETF筛选批量计算失败: {result_summary.get('message', '未知错误')}")
+                sys.exit(1)
+            
+            return
+        
+        # 🆕 显式筛选模式处理
+        if args.screening:
+            print("🔍 显式ETF筛选结果批量计算模式...")
+            
+            # 确定要处理的门槛
+            if args.threshold:
+                thresholds = [args.threshold]
+                print(f"📊 指定门槛: {args.threshold}")
+            else:
+                thresholds = ["3000万门槛", "5000万门槛"]
+                print(f"📊 处理所有门槛: {', '.join(thresholds)}")
+            
+            # 执行筛选结果批量计算
+            result_summary = controller.calculate_and_save_screening_results(
+                thresholds=thresholds,
+                output_dir=None,  # 🔬 使用配置中的智能输出路径
+                include_advanced_analysis=args.advanced
+            )
+            
+            # 输出筛选批量处理结果
+            print("\n" + "=" * 60)
+            if result_summary['success']:
+                print(f"✅ ETF筛选批量计算完成! 成功处理 {result_summary['total_etfs_processed']} 个ETF")
+                print(f"📊 门槛数量: {result_summary['thresholds_processed']}")
+                print(f"📁 输出目录: {result_summary['output_directory']}")
+                
+                # 显示保存统计
+                save_stats = result_summary['save_statistics']
+                print(f"💾 历史文件: {save_stats['total_files_saved']} 个")
+                print(f"💿 总大小: {save_stats['total_size_bytes'] / 1024 / 1024:.1f} MB")
+                
+                print(f"\n🛡️ 数据处理确认:")
+                print(f"   - 基于ETF初筛结果进行批量计算")
+                print(f"   - 每个ETF生成独立的历史数据文件")
+                print(f"   - 包含完整历史数据 + 最新WMA指标")
+                print(f"   - 按门槛分类保存到对应目录")
+                print(f"   - 复权类型: {args.adj_type}")
+                print(f"   - 模块化架构: 组件职责清晰")
+                
+            else:
+                print(f"❌ ETF筛选批量计算失败: {result_summary.get('message', '未知错误')}")
+                sys.exit(1)
+            
+            return
         
         # 如果要求显示ETF列表
         if args.list:
@@ -137,50 +256,44 @@ def main():
                 print("❌ 快速分析失败")
             return
         
-        # 确定要处理的ETF代码
+        # 🎯 指定ETF代码处理（仅当明确提供ETF代码时）
         if args.etf_codes:
             etf_codes = args.etf_codes
-        else:
-            # 🚀 改用股票型ETF作为默认，价格变化更明显
-            etf_codes = [controller.config.DEFAULT_ETF_CODE]  # 510050.SH
-            print(f"💡 未指定ETF代码，使用默认: {etf_codes} (上证50ETF)")
-            print(f"💡 提示: 货币基金(如159001.SZ)价格稳定，股票型ETF价格变化更明显")
-        
-        print(f"📊 开始计算 {len(etf_codes)} 个ETF的WMA指标...")
-        print(f"📁 数据路径: {controller.config.data_path}")
-        print(f"📈 复权类型: {args.adj_type}")
-        print(f"🎯 计算周期: {args.periods}")
-        print(f"⚡ 数据优化: 只读取最新{controller.config.required_rows}行")
-        print(f"📂 输出目录: {controller.config.default_output_dir} 🔬")
-        print(f"🔬 高级分析: {'开启' if args.advanced else '关闭'}")
-        
-        # 执行完整的计算和保存流程
-        result_summary = controller.calculate_and_save(
-            etf_codes=etf_codes,
-            output_dir=None,  # 🔬 使用配置中的智能输出路径
-            include_advanced_analysis=args.advanced
-        )
-        
-        # 总结
-        print("\n" + "=" * 60)
-        if result_summary['success']:
-            print(f"✅ WMA计算完成! 成功处理 {result_summary['processed_etfs']}/{result_summary['total_etfs']} 个ETF")
-            print(f"📊 成功率: {result_summary['success_rate']:.1f}%")
+            print(f"📊 开始计算 {len(etf_codes)} 个指定ETF的WMA指标...")
+            print(f"📁 数据路径: {controller.config.data_path}")
+            print(f"📈 复权类型: {args.adj_type}")
+            print(f"🎯 计算周期: {args.periods}")
+            print(f"⚡ 数据优化: 只读取最新{controller.config.required_rows}行")
+            print(f"📂 输出目录: {controller.config.default_output_dir} 🔬")
+            print(f"🔬 高级分析: {'开启' if args.advanced else '关闭'}")
             
-            print(f"\n🛡️ 数据处理确认:")
-            print(f"   - 所有原始CSV文件完全未被修改")
-            print(f"   - 临时数据已完全清理")
-            print(f"   - 只生成精简结果文件")
-            print(f"   - 数据处理效率大幅提升")
-            print(f"   - 复权类型: {args.adj_type}")
-            print(f"   - 模块化架构: 组件职责清晰")
+            # 执行完整的计算和保存流程
+            result_summary = controller.calculate_and_save(
+                etf_codes=etf_codes,
+                output_dir=None,  # 🔬 使用配置中的智能输出路径
+                include_advanced_analysis=args.advanced
+            )
             
-            print(f"\n💡 查看结果:")
-            print(f"   cd {result_summary['output_directory']}")
-            print(f"   ls -la WMA_*")
-        else:
-            print(f"❌ WMA计算失败: {result_summary.get('message', '未知错误')}")
-            sys.exit(1)
+            # 总结
+            print("\n" + "=" * 60)
+            if result_summary['success']:
+                print(f"✅ WMA计算完成! 成功处理 {result_summary['processed_etfs']}/{result_summary['total_etfs']} 个ETF")
+                print(f"📊 成功率: {result_summary['success_rate']:.1f}%")
+                
+                print(f"\n🛡️ 数据处理确认:")
+                print(f"   - 所有原始CSV文件完全未被修改")
+                print(f"   - 临时数据已完全清理")
+                print(f"   - 只生成精简结果文件")
+                print(f"   - 数据处理效率大幅提升")
+                print(f"   - 复权类型: {args.adj_type}")
+                print(f"   - 模块化架构: 组件职责清晰")
+                
+                print(f"\n💡 查看结果:")
+                print(f"   cd {result_summary['output_directory']}")
+                print(f"   ls -la WMA_*")
+            else:
+                print(f"❌ WMA计算失败: {result_summary.get('message', '未知错误')}")
+                sys.exit(1)
             
     except Exception as e:
         print(f"❌ 程序执行失败: {e}")
