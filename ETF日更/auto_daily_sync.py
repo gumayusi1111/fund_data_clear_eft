@@ -575,7 +575,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.mode == 'test':
-        test_connection()
+        success = test_connection()
+        if not success:
+            sys.exit(1)
     elif args.mode == 'check-missing':
         # 只检测，不处理
         detect_missing_data(args.days_back)
@@ -583,11 +585,17 @@ if __name__ == "__main__":
         # 检测并补漏
         result = detect_missing_data(args.days_back)
         if result['missing']:
-            batch_fill_missing_files(result['missing'])
+            success = batch_fill_missing_files(result['missing'])
+            if not success:
+                sys.exit(1)
         else:
             print("✅ 无缺失数据需要补齐")
     elif args.mode == 'smart-update':
         # 智能更新：先检测补漏，再更新今天
-        smart_daily_update(args.days_back)
+        success = smart_daily_update(args.days_back)
+        if not success:
+            sys.exit(1)
     else:  # daily
-        daily_incremental_sync() 
+        success = daily_incremental_sync()
+        if not success:
+            sys.exit(1) 

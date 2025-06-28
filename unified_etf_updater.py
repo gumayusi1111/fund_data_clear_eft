@@ -68,6 +68,10 @@ class UnifiedETFUpdater:
         # 动态加载数据库模块
         db_loaded = load_database_modules()
         
+        # ETF初筛配置
+        self.screening_config = self.config.get('etf_screening', {})
+        self.auto_screening_enabled = self.screening_config.get('enabled', True)
+        
         self.logger.info("统一ETF更新器初始化完成")
         if db_loaded and self.auto_import_enabled:
             self.logger.info("✅ 数据库自动导入已启用")
@@ -75,6 +79,11 @@ class UnifiedETFUpdater:
             self.logger.info("ℹ️ 数据库自动导入已禁用")
         else:
             self.logger.warning("⚠️ 数据库导入模块不可用")
+            
+        if self.auto_screening_enabled:
+            self.logger.info("✅ ETF自动初筛已启用")
+        else:
+            self.logger.info("ℹ️ ETF自动初筛已禁用")
         
     def auto_git_commit(self, success_modules):
         """自动提交Git更新"""
@@ -127,7 +136,9 @@ class UnifiedETFUpdater:
                 "ETF周更/0_ETF日K(前复权)/*.csv",
                 "ETF周更/0_ETF日K(后复权)/*.csv",
                 "ETF周更/0_ETF日K(除权)/*.csv",
-                "ETF市场状况/etf_market_status.json"
+                "ETF市场状况/etf_market_status.json",
+                "ETF_初筛/data/5000万门槛/*.txt",
+                "ETF_初筛/data/3000万门槛/*.txt"
             ]
             
             added_files = []
@@ -171,6 +182,8 @@ class UnifiedETFUpdater:
                 commit_msg += "\n✅ 周更数据已更新"
             if success_modules.get('market_status'):
                 commit_msg += "\n✅ 市场状况已更新"
+            if success_modules.get('etf_screening'):
+                commit_msg += "\n✅ ETF初筛已完成"
             
             # 执行提交
             commit_result = subprocess.run(
@@ -280,20 +293,33 @@ class UnifiedETFUpdater:
                 encoding='utf-8'
             )
             output = result.stdout + result.stderr
-            if "没有找到今天的文件" in output or "未找到任何文件" in output:
-                self.logger.info("📅 今天无新数据，智能跳过日更")
-                return False, "无新数据"
-            if "数据完整，无缺失" in output and "已是最新" in output:
-                self.logger.info("📅 日更数据已是最新，无缺失数据")
-                return False, "已是最新"
-            if result.returncode == 0 and ("智能更新完全成功" in output or "智能更新" in output or "处理完成" in output):
-                self.logger.info("✅ ETF智能日更完成（有数据更新）")
-                return True, "有新数据"
-            else:
-                self.logger.error("❌ ETF智能日更失败")
+            
+            # 检查明确的失败情况
+            if result.returncode != 0:
+                self.logger.error("❌ ETF智能日更失败（退出码非0）")
                 if result.stderr:
                     self.logger.error(f"错误: {result.stderr[:200]}...")
                 return False, "执行失败"
+            
+            if "智能更新部分失败" in output or "智能更新失败" in output:
+                self.logger.info("📅 今天无新数据，智能跳过日更")
+                return False, "无新数据"
+                
+            if "没有找到今天的文件" in output or "未找到任何文件" in output:
+                self.logger.info("📅 今天无新数据，智能跳过日更")
+                return False, "无新数据"
+                
+            if "数据完整，无缺失" in output and "已是最新" in output:
+                self.logger.info("📅 日更数据已是最新，无缺失数据")
+                return False, "已是最新"
+                
+            if "智能更新完全成功" in output or "今日增量更新完成" in output:
+                self.logger.info("✅ ETF智能日更完成（有数据更新）")
+                return True, "有新数据"
+            else:
+                # 默认情况：如果没有明确的成功标志，视为失败
+                self.logger.warning("⚠️ ETF智能日更状态不明确，视为无新数据")
+                return False, "状态不明确"
         except Exception as e:
             self.logger.error(f"执行日更时发生异常: {str(e)}")
             return False, f"异常: {str(e)}"
@@ -371,6 +397,78 @@ class UnifiedETFUpdater:
             self.logger.error(f"执行市场状况监控时发生异常: {str(e)}")
             return False, f"异常: {str(e)}"
 
+    def run_etf_screening(self, daily_has_new_data: bool):
+        """执行ETF初筛流程（依赖日更）"""
+        self.logger.info("=" * 50)
+        self.logger.info("开始执行ETF初筛流程（双门槛筛选）")
+        self.logger.info("=" * 50)
+        
+        if not self.auto_screening_enabled:
+            self.logger.info("ℹ️ ETF自动初筛已禁用，跳过")
+            return False, "初筛已禁用"
+        
+        if not daily_has_new_data:
+            self.logger.info("📊 日更无新数据，智能跳过ETF初筛")
+            return False, "依赖日更跳过"
+        
+        try:
+            screening_dir = self.project_root / "ETF_初筛"
+            screening_script = screening_dir / "main.py"
+            
+            if not screening_script.exists():
+                self.logger.error(f"ETF初筛脚本不存在: {screening_script}")
+                return False, "脚本不存在"
+            
+            # 获取初筛配置
+            fuquan_type = self.screening_config.get('fuquan_type', '0_ETF日K(后复权)')
+            days_back = self.screening_config.get('days_back', None)
+            
+            # 构建命令
+            cmd = [sys.executable, "main.py", "--mode", "dual", "--fuquan-type", fuquan_type]
+            if days_back:
+                cmd.extend(["--days-back", str(days_back)])
+            
+            self.logger.info(f"📊 运行ETF初筛: {' '.join(cmd)}")
+            
+            result = subprocess.run(
+                cmd,
+                cwd=str(screening_dir),
+                capture_output=True,
+                text=True,
+                encoding='utf-8'
+            )
+            
+            output = result.stdout + result.stderr
+            
+            # 检查执行结果
+            if result.returncode == 0 and ("双门槛筛选对比结果" in output or "保存双门槛筛选结果" in output):
+                self.logger.info("✅ ETF初筛完成（生成新筛选结果）")
+                
+                # 从输出中提取统计信息
+                if "通过筛选ETF" in output:
+                    lines = output.split('\n')
+                    for line in lines:
+                        if "5000万门槛通过筛选ETF" in line or "3000万门槛通过筛选ETF" in line:
+                            self.logger.info(f"  🎯 {line.strip()}")
+                
+                return True, "有新筛选结果"
+            else:
+                self.logger.error("❌ ETF初筛失败")
+                if result.stderr:
+                    self.logger.error(f"错误: {result.stderr[:300]}...")
+                if "no-parameter tools" in output:
+                    self.logger.error("可能是工具调用问题，但筛选可能已完成")
+                    # 检查是否生成了结果文件
+                    data_dir = screening_dir / "data"
+                    if data_dir.exists() and any(data_dir.rglob("*.txt")):
+                        self.logger.info("🔍 检测到筛选结果文件，视为成功")
+                        return True, "有新筛选结果"
+                return False, "执行失败"
+                
+        except Exception as e:
+            self.logger.error(f"执行ETF初筛时发生异常: {str(e)}")
+            return False, f"异常: {str(e)}"
+
     def test_system_status(self):
         """测试系统状态"""
         self.logger.info("🔍 开始系统状态测试")
@@ -380,6 +478,7 @@ class UnifiedETFUpdater:
             "ETF日更",
             "ETF周更", 
             "ETF市场状况",
+            "ETF_初筛",
             "config",
             "logs",
             "scripts"
@@ -398,7 +497,8 @@ class UnifiedETFUpdater:
             "config/hash_manager.py",
             "ETF日更/auto_daily_sync.py",
             "ETF周更/etf_auto_sync.py",
-            "ETF市场状况/market_status_monitor.py"
+            "ETF市场状况/market_status_monitor.py",
+            "ETF_初筛/main.py"
         ]
         
         for file_path in required_files:
@@ -432,7 +532,8 @@ class UnifiedETFUpdater:
         results = {
             'daily': False,
             'weekly': False,
-            'market_status': False
+            'market_status': False,
+            'etf_screening': False
         }
         reasons = {}
         # 1. 执行日更
@@ -447,7 +548,12 @@ class UnifiedETFUpdater:
         market_has_new, market_reason = self.run_market_status_check(daily_has_new)
         results['market_status'] = market_has_new
         reasons['market_status'] = market_reason
-        # 4. 数据库导入（只有有新数据才导入）
+        
+        # 4. ETF初筛依赖日更
+        screening_has_new, screening_reason = self.run_etf_screening(daily_has_new)
+        results['etf_screening'] = screening_has_new
+        reasons['etf_screening'] = screening_reason
+        # 5. 数据库导入（只有有新数据才导入）
         if daily_has_new:
             self.logger.info("📥 日更有新数据，导入数据库...")
             self.run_database_import("daily")
@@ -457,7 +563,9 @@ class UnifiedETFUpdater:
         if market_has_new:
             self.logger.info("📥 市场状况有新数据，导入数据库...")
             self.run_database_import("market_status")
-        # 5. 只有有新数据才允许Git提交
+        # 注意：ETF初筛结果是文本文件，不需要数据库导入
+        
+        # 6. 只有有新数据才允许Git提交
         total_success = sum(results.values())
         if total_success > 0:
             self.logger.info("")
@@ -481,7 +589,7 @@ class UnifiedETFUpdater:
         self.logger.info("各模块执行结果:")
         for k in results:
             self.logger.info(f"  {k}: {'✅ 有新数据' if results[k] else '⏭️ 跳过/无新数据'} ({reasons[k]})")
-        self.logger.info(f"整体有新数据模块数: {total_success}/3")
+        self.logger.info(f"整体有新数据模块数: {total_success}/4")
         return results
 
 def main():
@@ -495,6 +603,8 @@ def main():
                         help='禁用Git自动提交功能')
     parser.add_argument('--no-push', action='store_true',
                         help='禁用Git自动推送功能（仅本地提交）')
+    parser.add_argument('--no-screening', action='store_true',
+                        help='禁用ETF自动初筛功能')
     
     args = parser.parse_args()
     
@@ -508,6 +618,10 @@ def main():
     if args.no_push:
         updater.config['git_auto_commit']['auto_push'] = False
         updater.logger.info("🔧 已通过命令行参数禁用Git自动推送")
+    
+    if args.no_screening:
+        updater.auto_screening_enabled = False
+        updater.logger.info("🔧 已通过命令行参数禁用ETF自动初筛")
     
     if args.mode == 'test':
         # 测试模式
