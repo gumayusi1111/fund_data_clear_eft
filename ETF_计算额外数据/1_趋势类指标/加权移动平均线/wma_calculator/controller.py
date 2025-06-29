@@ -277,7 +277,22 @@ class WMAController:
                 if wmadiff_3_5 is not None:
                     print(f"              3-5={wmadiff_3_5:+.6f} (超短期动量)")
             
-            print(f"   🔄 排列: {signals['alignment']}")
+            # 🔬 显示科学的排列分析结果
+            alignment = signals['alignment']
+            if isinstance(alignment, dict):
+                status = alignment.get('status', '未知')
+                score = alignment.get('score', 0)
+                strength = alignment.get('strength_level', '未知')
+                print(f"   🔄 排列: {status} (评分:{score:+.2f}, 强度:{strength})")
+                
+                # 显示详细差距信息
+                if 'details' in alignment and isinstance(alignment['details'], dict):
+                    details = alignment['details']
+                    avg_diff = details.get('avg_diff_pct', 0)
+                    min_diff = details.get('min_diff_pct', 0)
+                    print(f"        差距分析: 平均{avg_diff:.2f}%, 最小{min_diff:.2f}%")
+            else:
+                print(f"   🔄 排列: {alignment}")
             
             if 'trading_signals' in signals:
                 trading = signals['trading_signals']

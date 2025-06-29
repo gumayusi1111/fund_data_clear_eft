@@ -186,9 +186,21 @@ class ResultProcessor:
                     else:
                         row[csv_column_name] = ''
                 
-                # 重要信号
+                # 🔬 重要信号 - 只保留核心的两个字段
                 signals = result['signals']
-                row['多空排列'] = signals.get('alignment', '')
+                alignment = signals.get('alignment', '')
+                
+                # 如果alignment是字典，提取关键信息
+                if isinstance(alignment, dict):
+                    status = alignment.get('status', '未知')
+                    score = alignment.get('score', 0)
+                    # 只保留两个核心字段
+                    row['多空排列'] = f"{status}"
+                    row['排列评分'] = round(float(score), 2) if score != 0 else 0
+                else:
+                    # 如果是字符串，直接使用
+                    row['多空排列'] = str(alignment)
+                    row['排列评分'] = 0
                 
                 # 🔬 高级分析字段（仅在开启时显示）
                 if 'trading_signals' in signals:
@@ -395,6 +407,7 @@ class ResultProcessor:
             df_sorted['WMA差值3-5'] = ''
             df_sorted['WMA差值5-20(%)'] = ''
             df_sorted['多空排列'] = ''
+            df_sorted['排列评分'] = ''
             
             print(f"   🔄 {etf_code}: 计算{len(df_sorted)}行历史WMA数据...")
             
@@ -447,7 +460,16 @@ class ResultProcessor:
                     # 计算多空排列（只有当所有WMA都有数据时）
                     if i >= max_period - 1:
                         alignment = signal_analyzer.calculate_alignment(wma_results)
-                        df_sorted.iloc[i, df_sorted.columns.get_loc('多空排列')] = alignment
+                        
+                        # 🔬 处理字典格式，提取关键信息
+                        if isinstance(alignment, dict):
+                            status = alignment.get('status', '未知')
+                            score = alignment.get('score', 0)
+                            df_sorted.iloc[i, df_sorted.columns.get_loc('多空排列')] = status
+                            df_sorted.iloc[i, df_sorted.columns.get_loc('排列评分')] = round(float(score), 2) if score != 0 else 0
+                        else:
+                            df_sorted.iloc[i, df_sorted.columns.get_loc('多空排列')] = str(alignment)
+                            df_sorted.iloc[i, df_sorted.columns.get_loc('排列评分')] = 0
                 
                 processed_count += 1
                 
@@ -555,11 +577,21 @@ class ResultProcessor:
                         'WMA_10': row.get('WMA10'),
                         'WMA_20': row.get('WMA20')
                     }
-                    return signal_analyzer.calculate_alignment(wma_dict)
-                return ''
+                    alignment = signal_analyzer.calculate_alignment(wma_dict)
+                    
+                    # 🔬 处理字典格式，提取关键信息
+                    if isinstance(alignment, dict):
+                        status = alignment.get('status', '未知')
+                        score = alignment.get('score', 0)
+                        return status, round(float(score), 2) if score != 0 else 0
+                    else:
+                        return str(alignment), 0  # 字符串格式，评分为0
+                return '', 0
             
-            # 使用apply向量化计算排列
-            result_df['多空排列'] = result_df.apply(calc_alignment_vectorized, axis=1)
+            # 使用apply向量化计算排列，同时获取状态和评分
+            alignment_results = result_df.apply(calc_alignment_vectorized, axis=1, result_type='expand')
+            result_df['多空排列'] = alignment_results[0]
+            result_df['排列评分'] = alignment_results[1]
             
             # Step 6: 确保日期格式正确并按时间倒序排列（最新在顶部）
             # 转换日期格式以确保正确排序

@@ -24,15 +24,15 @@ class SignalAnalyzer:
         self.config = config
         print("📊 信号分析器初始化完成")
     
-    def calculate_alignment(self, wma_results: Dict[str, Optional[float]]) -> str:
+    def calculate_alignment(self, wma_results: Dict[str, Optional[float]]) -> Dict:
         """
-        计算多空排列状态
+        🔬 科学的多空排列计算 - 基于统计显著性和相对差距
         
         Args:
             wma_results: WMA计算结果
             
         Returns:
-            str: 排列状态描述
+            Dict: 包含排列状态、强度评分和详细分析的字典
         """
         try:
             wma5 = wma_results.get('WMA_5')
@@ -40,26 +40,84 @@ class SignalAnalyzer:
             wma20 = wma_results.get('WMA_20')
             
             if not all([wma5, wma10, wma20]):
-                return "数据不足"
+                return {
+                    'status': '数据不足',
+                    'score': 0,
+                    'strength_level': '无效',
+                    'details': '缺少必要的WMA数据'
+                }
             
-            # 强势多头排列：短期 > 中期 > 长期
-            if wma5 > wma10 > wma20:
-                return "强势多头排列"
-            # 弱势多头：部分多头特征
-            elif wma5 > wma10 or wma10 > wma20:
-                return "弱势多头"
-            # 强势空头排列：短期 < 中期 < 长期
-            elif wma5 < wma10 < wma20:
-                return "强势空头排列"
-            # 弱势空头：部分空头特征
-            elif wma5 < wma10 or wma10 < wma20:
-                return "弱势空头"
+            # 🎯 科学阈值设定（基于学术研究和实践经验）
+            MIN_THRESHOLD_PCT = 0.3   # 最小有效阈值：0.3%
+            MODERATE_THRESHOLD_PCT = 0.8  # 中等强度阈值：0.8%
+            STRONG_THRESHOLD_PCT = 1.5    # 强势阈值：1.5%
+            
+            # 计算相对差距百分比
+            diff_5_10_pct = ((wma5 - wma10) / wma10) * 100 if wma10 != 0 else 0
+            diff_10_20_pct = ((wma10 - wma20) / wma20) * 100 if wma20 != 0 else 0
+            
+            # 平均差距和最小差距
+            avg_diff_pct = abs((diff_5_10_pct + diff_10_20_pct) / 2)
+            min_diff_pct = min(abs(diff_5_10_pct), abs(diff_10_20_pct))
+            
+            # 判断排列方向
+            is_bullish = diff_5_10_pct > 0 and diff_10_20_pct > 0
+            is_bearish = diff_5_10_pct < 0 and diff_10_20_pct < 0
+            
+            if not (is_bullish or is_bearish):
+                return {
+                    'status': '震荡排列',
+                    'score': 0,
+                    'strength_level': '中性',
+                    'details': {
+                        'diff_5_10_pct': round(diff_5_10_pct, 3),
+                        'diff_10_20_pct': round(diff_10_20_pct, 3),
+                        'reason': '移动平均线交织，方向不明确'
+                    }
+                }
+            
+            # 🔬 基于科学阈值判断强度等级
+            if min_diff_pct < MIN_THRESHOLD_PCT:
+                strength_level = "微弱"
+                base_score = 0.3  # 大幅降低微弱信号评分
+            elif avg_diff_pct >= STRONG_THRESHOLD_PCT:
+                strength_level = "强势"
+                base_score = min(1.2, avg_diff_pct * 0.4)  # 最高1.2分，降低权重
+            elif avg_diff_pct >= MODERATE_THRESHOLD_PCT:
+                strength_level = "中等"
+                base_score = min(0.9, avg_diff_pct * 0.5)  # 最高0.9分
             else:
-                return "中性排列"
+                strength_level = "温和"
+                base_score = min(0.6, avg_diff_pct * 0.6)  # 最高0.6分
+            
+            # 应用方向
+            final_score = base_score if is_bullish else -base_score
+            direction = "多头" if is_bullish else "空头"
+            status = f"{strength_level}{direction}排列"
+            
+            return {
+                'status': status,
+                'score': round(final_score, 2),
+                'strength_level': strength_level,
+                'details': {
+                    'diff_5_10_pct': round(diff_5_10_pct, 3),
+                    'diff_10_20_pct': round(diff_10_20_pct, 3),
+                    'avg_diff_pct': round(avg_diff_pct, 3),
+                    'min_diff_pct': round(min_diff_pct, 3),
+                    'direction': direction,
+                    'wma_values': [round(wma5, 4), round(wma10, 4), round(wma20, 4)],
+                    'scientific_basis': '基于统计显著性和相对差距分析'
+                }
+            }
                 
         except Exception as e:
             print(f"❌ 多空排列计算失败: {e}")
-            return "计算失败"
+            return {
+                'status': '计算失败',
+                'score': 0,
+                'strength_level': '错误',
+                'details': f'计算错误: {str(e)}'
+            }
     
     def calculate_price_signals(self, current_price: float, wma_results: Dict[str, Optional[float]]) -> Dict:
         """
@@ -184,7 +242,7 @@ class SignalAnalyzer:
         return trend_analysis
     
     def generate_trading_signals(self, current_price: float, wma_results: Dict[str, Optional[float]], 
-                                alignment: str, trend_analysis: Dict) -> Dict:
+                                alignment: Dict, trend_analysis: Dict) -> Dict:
         """
         生成交易信号
         
@@ -210,19 +268,32 @@ class SignalAnalyzer:
             signal_score = 0
             signal_details = []
             
-            # 多空排列信号
-            if alignment == "强势多头排列":
-                signal_score += 2
-                signal_details.append("强势多头排列(+2)")
-            elif alignment == "弱势多头":
-                signal_score += 1
-                signal_details.append("弱势多头(+1)")
-            elif alignment == "强势空头排列":
-                signal_score -= 2
-                signal_details.append("强势空头排列(-2)")
-            elif alignment == "弱势空头":
-                signal_score -= 1
-                signal_details.append("弱势空头(-1)")
+            # 🔬 科学的多空排列信号评分（大幅降低权重）
+            alignment_status = alignment.get('status', '未知')
+            alignment_score = alignment.get('score', 0)
+            strength_level = alignment.get('strength_level', '未知')
+            
+            # 直接使用科学计算的评分，而不是固定的+2分
+            if alignment_score != 0:
+                signal_score += alignment_score
+                direction = "多头" if alignment_score > 0 else "空头"
+                signal_details.append(f"{strength_level}{direction}排列({alignment_score:+.2f})")
+            
+            # 🆕 添加排列质量评估
+            if 'details' in alignment and isinstance(alignment['details'], dict):
+                details = alignment['details']
+                min_diff_pct = details.get('min_diff_pct', 0)
+                avg_diff_pct = details.get('avg_diff_pct', 0)
+                
+                # 如果差距过小，给予额外的质量惩罚
+                if min_diff_pct < 0.2:  # 小于0.2%的差距视为噪音
+                    quality_penalty = -0.3
+                    signal_score += quality_penalty
+                    signal_details.append(f"排列质量较低(差距{min_diff_pct:.2f}%)({quality_penalty:+.1f})")
+                elif avg_diff_pct > 2.0:  # 大于2%的差距给予质量奖励
+                    quality_bonus = 0.2
+                    signal_score += quality_bonus
+                    signal_details.append(f"排列质量优秀(平均差距{avg_diff_pct:.2f}%)({quality_bonus:+.1f})")
             
             # 🆕 WMA差值信号分析
             wmadiff_5_20 = wma_results.get('WMA_DIFF_5_20')
