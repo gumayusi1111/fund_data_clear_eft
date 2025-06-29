@@ -4,8 +4,9 @@
 SMA计算器主程序 - 中短线专版
 ==========================
 
+🚫 已简化：只保留客观数据计算，移除主观判断
 简单移动平均线计算器的命令行接口
-专注于中短线交易指标：MA5, MA10, MA20, MA60
+专注于中短线技术指标：MA5, MA10, MA20, MA60
 
 使用方法:
     python sma_main.py                                     # 默认：ETF筛选结果批量计算
@@ -82,7 +83,7 @@ def main():
                        help='输出目录路径')
     
     parser.add_argument('--advanced', action='store_true',
-                       help='包含高级分析（趋势分析、交易信号等）')
+                       help='包含高级分析（🚫 已移除：趋势分析、交易信号等主观判断）')
     
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='显示详细信息')
@@ -203,7 +204,8 @@ def handle_single_etf(controller: SMAController, etf_code: str, verbose: bool = 
         # 显示结果摘要
         latest = result['latest_price']
         sma_values = result['sma_values']
-        signals = result['signals']
+        # 🚫 已移除主观判断变量
+        # signals = result['signals']
         
         print(f"\n📊 结果摘要:")
         print(f"   💰 最新价格: {latest['close']} ({latest['change_pct']:+.2f}%)")

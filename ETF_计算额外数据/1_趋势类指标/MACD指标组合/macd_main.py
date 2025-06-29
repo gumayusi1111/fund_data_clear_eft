@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MACD指标组合系统 - 主程序
-========================
+MACD指标组合系统 - 主程序 (客观数据专版)
+=====================================
 
+🚫 已简化：只保留客观数据计算，移除主观判断
 专业的MACD技术指标计算系统
-🎯 功能: DIF+DEA+MACD三线组合分析、金叉死叉识别、零轴分析
-📊 输出: 完整的MACD指标数据和交易信号分析
+🎯 功能: DIF+DEA+MACD三线组合计算
+📊 输出: 完整的MACD指标数据（纯客观数值）
 ⚙️ 参数: 支持标准(12,26,9)、敏感(8,17,9)、平滑(19,39,9)配置
+🚫 已移除: 金叉死叉识别、零轴分析、交易信号等主观判断
 
 """
 
@@ -25,12 +27,12 @@ from macd_calculator.controller import MACDController
 def print_welcome_banner():
     """打印欢迎信息"""
     print("=" * 70)
-    print(" " * 15 + "MACD指标组合计算系统")
+    print(" " * 10 + "MACD指标组合计算系统 (客观数据专版)")
     print("=" * 70)
     print("🎯 Moving Average Convergence Divergence Analysis")
-    print("📊 专业技术指标: DIF + DEA + MACD + 信号分析")
+    print("📊 专业技术指标: DIF + DEA + MACD (纯客观数据)")
     print("⚙️ 三种参数配置: 标准(12,26,9) | 敏感(8,17,9) | 平滑(19,39,9)")
-    print("🎲 信号识别: 金叉死叉 | 零轴穿越 | 背离分析")
+    print("🚫 已移除主观判断: 信号分析、交易建议、金叉死叉等")
     print("=" * 70)
     print()
 

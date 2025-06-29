@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MACD控制器
-==========
+MACD控制器 - 客观数据专版
+=======================
 
-MACD系统的核心控制器，整合所有模块
-🎯 功能: 流程控制、模块协调、进度管理、错误处理
+🚫 已简化：只保留客观数据计算，移除主观判断
+MACD系统的核心控制器，整合数据计算模块
+🎯 功能: 流程控制、数据计算、进度管理、错误处理
 📊 接口: 单ETF处理、批量处理、配置管理
+🚫 已移除: 信号分析、交易建议等主观判断
 
 """
 
@@ -17,13 +19,13 @@ from typing import Dict, List, Optional, Tuple
 
 from .config import MACDConfig
 from .macd_engine import MACDEngine
-from .signal_analyzer import MACDSignalAnalyzer
+# from .signal_analyzer import MACDSignalAnalyzer  # 🚫 已删除主观分析
 from .data_processor import MACDDataProcessor
 from .result_processor import MACDResultProcessor
 
 
 class MACDController:
-    """MACD控制器 - 系统协调中心"""
+    """MACD控制器 - 客观数据专版"""
     
     def __init__(self, parameter_set: str = 'standard'):
         """
@@ -37,19 +39,20 @@ class MACDController:
         # 初始化配置
         self.config = MACDConfig(parameter_set)
         
-        # 初始化各组件
+        # 初始化各组件 - 🚫 已移除主观分析组件
         self.macd_engine = MACDEngine(self.config)
-        self.signal_analyzer = MACDSignalAnalyzer(self.config)
+        # self.signal_analyzer = MACDSignalAnalyzer(self.config)  # 🚫 已删除主观分析
         self.data_processor = MACDDataProcessor(self.config)
         self.result_processor = MACDResultProcessor(self.config)
         
-        print("🎯 MACD控制器初始化完成")
+        print("🎯 MACD控制器初始化完成 (客观数据专版)")
         print(f"⚙️ 参数配置: {parameter_set}")
+        print("🚫 已移除: 信号分析、交易建议等主观判断")
         print("=" * 60)
     
     def process_single_etf(self, etf_code: str, threshold_type: str = "3000万门槛") -> Tuple[bool, str]:
         """
-        处理单个ETF的MACD计算
+        处理单个ETF的MACD计算 - 客观数据专版
         
         Args:
             etf_code: ETF代码
@@ -76,17 +79,18 @@ class MACDController:
             if df_with_macd is None or len(df_with_macd) == 0:
                 return False, "MACD计算失败"
             
+            # 🚫 已移除信号分析步骤 - 只保留客观数据
             # 4. 信号分析
-            df_with_signals = self.signal_analyzer.batch_analyze_historical_data(df_with_macd)
-            if df_with_signals is None or len(df_with_signals) == 0:
-                return False, "信号分析失败"
+            # df_with_signals = self.signal_analyzer.batch_analyze_historical_data(df_with_macd)
+            # if df_with_signals is None or len(df_with_signals) == 0:
+            #     return False, "信号分析失败"
             
-            # 5. 结果格式化
-            formatted_df = self.result_processor.format_macd_results(df_with_signals, etf_code)
+            # 4. 结果格式化（只包含客观数据）
+            formatted_df = self.result_processor.format_macd_results(df_with_macd, etf_code)
             if formatted_df is None or len(formatted_df) == 0:
                 return False, "结果格式化失败"
             
-            # 6. 保存结果
+            # 5. 保存结果
             save_success = self.result_processor.save_etf_results(formatted_df, etf_code, threshold_type)
             if not save_success:
                 return False, "结果保存失败"
