@@ -122,28 +122,18 @@ class ETFDataReader:
             return None
         
         try:
-            print(f"📖 优化读取: 只读取最新{self.config.required_rows}行数据")
+            print(f"📖 数据读取: 使用所有可用数据，不限制行数")
             
-            # 🔬 科学读取：先获取总行数
-            with open(file_path, 'r', encoding='utf-8') as f:
-                total_lines = sum(1 for _ in f) - 1  # 减去表头
-            
-            # 🔬 高效读取：只读取最新的required_rows行
-            skip_rows = max(0, total_lines - self.config.required_rows)
-            
-            df = pd.read_csv(
-                file_path, 
-                encoding='utf-8',
-                skiprows=range(1, skip_rows + 1) if skip_rows > 0 else None
-            )
+            # 🔬 科学读取：读取完整数据，原数据是什么就是什么
+            df = pd.read_csv(file_path, encoding='utf-8')
+            total_lines = len(df)
             
             if df.empty:
                 print(f"❌ 数据为空: {etf_code}")
                 return None
             
-            print(f"📊 数据优化: {etf_code} - 从{total_lines}行优化为{len(df)}行")
-            efficiency_gain = ((total_lines - len(df)) / total_lines * 100) if total_lines > len(df) else 0
-            print(f"⚡ 效率提升: {efficiency_gain:.1f}% (读取最新{len(df)}行)")
+            print(f"📊 数据读取: {etf_code} - {total_lines}行历史数据")
+            print(f"⚡ 数据策略: 有多少用多少，不人为限制")
             
             return df, total_lines
             

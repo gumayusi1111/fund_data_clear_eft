@@ -97,8 +97,9 @@ class ETFDataReader:
             if df is None:
                 return None
             
-            # 数据限制：只取最近required_rows行
-            if len(df) > self.config.required_rows:
+            # 数据策略：用户要求使用完整历史数据
+            # 原数据是什么就是什么，不要人为限制行数
+            if self.config.required_rows is not None and len(df) > self.config.required_rows:
                 df = df.tail(self.config.required_rows)
             
             actual_rows = len(df)

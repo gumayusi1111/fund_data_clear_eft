@@ -144,7 +144,7 @@ class EMAController:
     def calculate_screening_results(self, threshold: str = "3000万门槛", 
                                   max_etfs: Optional[int] = None, verbose: bool = False) -> Dict:
         """
-        计算筛选结果中的所有ETF
+        计算筛选结果中的所有ETF（生成完整历史数据文件）
         
         Args:
             threshold: 门槛类型
@@ -170,7 +170,7 @@ class EMAController:
             
             print(f"📋 共需处理 {len(etf_codes)} 个ETF")
             
-            # 2. 批量计算
+            # 2. 批量计算（不保存单行文件，只收集结果）
             results = []
             success_count = 0
             
@@ -179,7 +179,7 @@ class EMAController:
                 
                 result = self.calculate_single_etf(
                     etf_code, 
-                    save_result=True, 
+                    save_result=False,  # 不保存单行文件
                     threshold=threshold, 
                     verbose=verbose
                 )
@@ -189,24 +189,69 @@ class EMAController:
                     if result.get('success', False):
                         success_count += 1
             
-            # 3. 生成统计
+            # 3. 📊 生成完整历史数据文件（模仿SMA/WMA）
+            print(f"\n💾 开始生成完整历史数据文件...")
+            
+            save_stats = {
+                'total_files_saved': 0,
+                'total_size_bytes': 0,
+                'thresholds': {threshold: {'files_saved': 0, 'total_size': 0, 'failed_saves': 0}}
+            }
+            
+            # 为每个成功的ETF生成完整历史文件
+            for result in results:
+                if result.get('success', False):
+                    etf_code = result['etf_code']
+                    print(f"   📊 处理 {etf_code} 的完整历史数据...")
+                    
+                    # 重新读取完整历史数据（不限制行数）
+                    data_result = self.data_reader.read_etf_data(etf_code)
+                    if data_result:
+                        full_df, _ = data_result
+                        
+                        # 保存完整历史EMA文件
+                        saved_file = self.result_processor.save_historical_results(
+                            etf_code, 
+                            full_df, 
+                            result['ema_values'], 
+                            threshold,
+                            result['signals'].get('arrangement', {}).get('arrangement', ''),
+                            self.config.default_output_dir
+                        )
+                        
+                        if saved_file:
+                            import os
+                            file_size = os.path.getsize(saved_file)
+                            save_stats['total_files_saved'] += 1
+                            save_stats['total_size_bytes'] += file_size
+                            save_stats['thresholds'][threshold]['files_saved'] += 1
+                            save_stats['thresholds'][threshold]['total_size'] += file_size
+                        else:
+                            save_stats['thresholds'][threshold]['failed_saves'] += 1
+                    else:
+                        save_stats['thresholds'][threshold]['failed_saves'] += 1
+                        print(f"   ❌ {etf_code}: 无法读取完整历史数据")
+            
+            # 4. 生成统计
             stats = self.result_processor.create_summary_stats(results)
             
-            # 4. 显示摘要
+            # 5. 显示摘要
             summary_display = self.result_processor.format_summary_display(stats)
             print(summary_display)
             
-            # 5. 显示文件输出摘要
-            self.file_manager.show_output_summary()
-            
-            # 6. 创建目录说明
-            self.file_manager.create_directory_readme(threshold)
+            # 6. 显示保存统计
+            if save_stats:
+                print(f"\n📁 文件保存统计:")
+                print(f"   ✅ 成功文件: {save_stats['total_files_saved']} 个")
+                print(f"   💿 总大小: {save_stats['total_size_bytes'] / 1024 / 1024:.1f} MB")
+                print(f"   📊 文件类型: 完整历史EMA数据")
             
             return {
                 'success': True,
                 'threshold': threshold,
                 'results': results,
                 'stats': stats,
+                'save_stats': save_stats,
                 'processed_count': len(etf_codes),
                 'success_count': success_count
             }

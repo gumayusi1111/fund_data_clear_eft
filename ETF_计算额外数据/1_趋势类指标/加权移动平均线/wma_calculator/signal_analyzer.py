@@ -22,11 +22,21 @@ class SignalAnalyzer:
             config: WMA配置对象
         """
         self.config = config
-        print("📊 信号分析器初始化完成")
+        
+        # 🎯 使用WMA系统专属参数（最敏感系统）
+        self.thresholds = config.get_system_thresholds()
+        self.score_weights = config.get_system_score_weights()
+        self.volume_threshold = config.get_volume_threshold()
+        self.tolerance_ratio = config.get_tolerance_ratio()
+        
+        print("📊 WMA信号分析器初始化完成 (系统差异化版)")
+        print(f"🎯 WMA专属阈值: {self.thresholds}")
+        print(f"📊 WMA专属权重: {self.score_weights}")
+        print(f"📈 量能阈值: {self.volume_threshold}, 容错率: {self.tolerance_ratio}")
     
     def calculate_alignment(self, wma_results: Dict[str, Optional[float]]) -> Dict:
         """
-        🔬 科学的多空排列计算 - 基于统计显著性和相对差距
+        🔬 科学的多空排列计算 - 使用WMA系统专属参数
         
         Args:
             wma_results: WMA计算结果
@@ -47,10 +57,10 @@ class SignalAnalyzer:
                     'details': '缺少必要的WMA数据'
                 }
             
-            # 🎯 科学阈值设定（基于学术研究和实践经验）
-            MIN_THRESHOLD_PCT = 0.3   # 最小有效阈值：0.3%
-            MODERATE_THRESHOLD_PCT = 0.8  # 中等强度阈值：0.8%
-            STRONG_THRESHOLD_PCT = 1.5    # 强势阈值：1.5%
+            # 🎯 使用WMA系统专属阈值（比标准更严格）
+            MIN_THRESHOLD_PCT = self.thresholds['minimal']      # 0.20% (比标准0.3%更严格)
+            MODERATE_THRESHOLD_PCT = self.thresholds['moderate'] # 0.60% (比标准0.8%更严格)
+            STRONG_THRESHOLD_PCT = self.thresholds['strong']     # 1.20% (比标准1.5%更严格)
             
             # 计算相对差距百分比
             diff_5_10_pct = ((wma5 - wma10) / wma10) * 100 if wma10 != 0 else 0
@@ -76,19 +86,19 @@ class SignalAnalyzer:
                     }
                 }
             
-            # 🔬 基于科学阈值判断强度等级
+            # 🔬 基于WMA系统专属阈值判断强度等级
             if min_diff_pct < MIN_THRESHOLD_PCT:
                 strength_level = "微弱"
-                base_score = 0.3  # 大幅降低微弱信号评分
+                base_score = self.score_weights['微弱']
             elif avg_diff_pct >= STRONG_THRESHOLD_PCT:
                 strength_level = "强势"
-                base_score = min(1.2, avg_diff_pct * 0.4)  # 最高1.2分，降低权重
+                base_score = self.score_weights['强势']
             elif avg_diff_pct >= MODERATE_THRESHOLD_PCT:
                 strength_level = "中等"
-                base_score = min(0.9, avg_diff_pct * 0.5)  # 最高0.9分
+                base_score = self.score_weights['中等']
             else:
                 strength_level = "温和"
-                base_score = min(0.6, avg_diff_pct * 0.6)  # 最高0.6分
+                base_score = self.score_weights['温和']
             
             # 应用方向
             final_score = base_score if is_bullish else -base_score
@@ -106,12 +116,13 @@ class SignalAnalyzer:
                     'min_diff_pct': round(min_diff_pct, 3),
                     'direction': direction,
                     'wma_values': [round(wma5, 4), round(wma10, 4), round(wma20, 4)],
-                    'scientific_basis': '基于统计显著性和相对差距分析'
+                    'scientific_basis': f'基于WMA系统专属参数 (严格阈值{MIN_THRESHOLD_PCT}%)',
+                    'system_type': 'WMA (最敏感)'
                 }
             }
                 
         except Exception as e:
-            print(f"❌ 多空排列计算失败: {e}")
+            print(f"❌ WMA多空排列计算失败: {e}")
             return {
                 'status': '计算失败',
                 'score': 0,

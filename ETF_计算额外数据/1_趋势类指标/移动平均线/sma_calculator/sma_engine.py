@@ -10,7 +10,7 @@ SMA计算引擎模块 - 中短线专版
 🔬 科学标准:
 - SMA公式: SMA = Σ(Price_i) / n
 - 中短线周期: 5, 10, 20, 60天
-- 数据限制: 70行 (MA60需要60行，留10行缓冲)
+- 数据策略: 使用所有可用历史数据，原数据是什么就是什么
 - 精度控制: float64高精度计算，结果保留6位小数
 """
 
@@ -32,14 +32,18 @@ class SMAEngine:
         """
         self.config = config
         
-        # 🔬 科学验证：确保数据限制合理
-        if self.config.required_rows < self.config.max_period:
+        # 🔬 科学验证：确保数据限制合理 - 已禁用，使用所有数据
+        # 用户要求：原数据是什么就是什么，不要人为限制行数
+        if self.config.required_rows is not None and self.config.required_rows < self.config.max_period:
             print(f"⚠️  科学警告: 数据行数({self.config.required_rows})小于最大周期({self.config.max_period})")
             self.config.required_rows = self.config.max_period + 10
         
         print("🔬 SMA计算引擎初始化完成 (中短线专版)")
         print(f"   🎯 支持周期: {self.config.sma_periods}")
-        print(f"   📊 数据限制: {self.config.required_rows}行")
+        if self.config.required_rows is not None:
+            print(f"   📊 数据限制: {self.config.required_rows}行")
+        else:
+            print(f"   📊 数据策略: 使用所有可用历史数据")
         print(f"   🔬 算法标准: 严格按照标准SMA公式计算")
     
     def calculate_single_sma(self, prices: pd.Series, period: int) -> pd.Series:
@@ -105,8 +109,12 @@ class SMAEngine:
             print("❌ 缺少'收盘价'列")
             return {}
         
-        # ⚡ 性能优化：创建工作副本保护原始数据，同时限制数据量
-        work_df = df.tail(self.config.required_rows).copy()
+        # ⚡ 性能优化：创建工作副本保护原始数据
+        # 用户要求：原数据是什么就是什么，使用所有可用数据
+        if self.config.required_rows is not None:
+            work_df = df.tail(self.config.required_rows).copy()
+        else:
+            work_df = df.copy()  # 使用完整历史数据
         
         # ⚡ 性能优化：提取价格序列，转换为高效的numpy数组
         prices = work_df['收盘价'].values.astype(np.float32)

@@ -109,8 +109,19 @@ class SMAController:
                 latest_price['close'], sma_results, alignment, trend_analysis
             )
             
+            # 🔬 确保alignment采用统一格式（支持新的字典返回值）
+            if isinstance(alignment, dict):
+                alignment_info = alignment
+            else:
+                alignment_info = {
+                    'status': str(alignment),
+                    'score': 0,
+                    'strength_level': '未知',
+                    'details': {}
+                }
+            
             signals = {
-                'alignment': alignment,
+                'alignment': alignment_info,  # 保存完整的alignment信息 
                 'price_vs_sma': price_signals,
                 'trend_analysis': trend_analysis,
                 'trading_signals': trading_signals
@@ -305,7 +316,14 @@ class SMAController:
                 if smadiff_5_10 is not None:
                     print(f"              5-10={smadiff_5_10:+.6f} (短期动量)")
             
-            print(f"   🔄 排列: {signals['alignment']}")
+            # 🔬 处理字典格式的alignment信息
+            alignment_info = signals['alignment']
+            if isinstance(alignment_info, dict):
+                status = alignment_info.get('status', '未知')
+                score = alignment_info.get('score', 0)
+                print(f"   🔄 排列: {status} (评分:{score})")
+            else:
+                print(f"   🔄 排列: {alignment_info}")
             
             if 'trading_signals' in signals:
                 trading = signals['trading_signals']

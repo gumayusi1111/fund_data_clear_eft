@@ -10,7 +10,7 @@ WMA计算引擎模块 - 科学严谨版
 🔬 科学标准:
 - WMA公式: WMA = Σ(Price_i × Weight_i) / Σ(Weight_i)
 - 权重序列: 1, 2, 3, ..., n (线性递增)
-- 数据限制: 严格50行 (WMA20需要20行，留30行缓冲)
+- 数据策略: 使用所有可用数据，不人为限制行数
 - 精度控制: float64高精度计算，结果保留6位小数
 """
 
@@ -32,14 +32,12 @@ class WMAEngine:
         """
         self.config = config
         
-        # 🔬 科学验证：确保数据限制为50行
-        if self.config.required_rows != 50:
-            print(f"⚠️  科学警告: 数据行数应为50行，当前为{self.config.required_rows}行")
-            self.config.required_rows = 50
+        # 🔬 数据策略：使用所有可用数据，不强制限制行数
+        # 原数据是什么就是什么，有多少算多少
         
         print("🔬 WMA计算引擎初始化完成 (科学严谨版)")
         print(f"   🎯 支持周期: {self.config.wma_periods}")
-        print(f"   📊 数据限制: 严格50行 (WMA20需要20行，留30行缓冲)")
+        print(f"   📊 数据策略: 使用所有可用数据，不限制行数")
         print(f"   🔬 算法标准: 严格按照标准WMA公式计算")
     
     def calculate_single_wma(self, prices: pd.Series, period: int) -> pd.Series:
@@ -101,7 +99,7 @@ class WMAEngine:
         计算所有周期的WMA指标 - 科学严谨版本
         
         Args:
-            df: 包含价格数据的DataFrame (严格50行)
+            df: 包含价格数据的DataFrame (使用所有可用数据)
             
         Returns:
             Dict[str, Optional[float]]: WMA结果字典
@@ -110,6 +108,7 @@ class WMAEngine:
         - 严格验证数据完整性
         - 使用标准WMA公式
         - 结果精度控制到小数点后6位
+        - 原数据是什么就是什么，有多少算多少
         """
         print("🔬 开始科学WMA计算...")
         wma_results = {}
@@ -123,12 +122,13 @@ class WMAEngine:
             print("❌ 科学错误: 缺少收盘价字段")
             return wma_results
         
-        # 🔬 科学验证：数据行数检查 (应为50行)
-        if len(df) != 50:
-            print(f"⚠️  科学警告: 数据行数为{len(df)}行，期望50行")
-            if len(df) < 20:
-                print("❌ 科学错误: 数据不足，无法计算WMA20")
-                return wma_results
+        # 🔬 数据验证：检查是否有足够数据计算最大周期
+        max_period = max(self.config.wma_periods) if self.config.wma_periods else 20
+        if len(df) < max_period:
+            print(f"❌ 数据不足: 数据行数({len(df)})小于最大周期({max_period})")
+            return wma_results
+        
+        print(f"📊 数据概况: {len(df)}行历史数据，支持最大WMA{max_period}计算")
         
         prices = df['收盘价'].copy()  # 创建副本，保护原数据
         

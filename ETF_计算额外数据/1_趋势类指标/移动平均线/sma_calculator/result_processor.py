@@ -125,8 +125,14 @@ class ResultProcessor:
                 else:
                     row_data[column_name] = ''
             
-            # 添加多空排列
-            row_data['多空排列'] = signals.get('alignment', '')
+            # 添加多空排列信息
+            alignment = signals.get('alignment', '')
+            if isinstance(alignment, dict):
+                row_data['多空排列'] = alignment.get('status', '')
+                row_data['排列评分'] = alignment.get('score', 0)
+            else:
+                row_data['多空排列'] = str(alignment)
+                row_data['排列评分'] = 0
             
             # 创建DataFrame并保存
             df = pd.DataFrame([row_data])
@@ -221,7 +227,8 @@ class ResultProcessor:
             'SMA差值5-20',
             'SMA差值5-10', 
             'SMA差值5-20(%)',
-            '多空排列'
+            '多空排列',
+            '排列评分'
         ])
         
         return headers
@@ -586,11 +593,28 @@ class ResultProcessor:
                         ma_col = f'MA{period}'
                         if ma_col in row:
                             sma_dict[f'SMA_{period}'] = row[ma_col]
-                    return signal_analyzer.calculate_alignment(sma_dict)
-                return ''
+                    
+                    alignment = signal_analyzer.calculate_alignment(sma_dict)
+                    
+                    # 🔬 处理字典格式，提取关键信息
+                    if isinstance(alignment, dict):
+                        status = alignment.get('status', '未知')
+                        score = alignment.get('score', 0)
+                        return {'status': status, 'score': round(float(score), 2)}
+                    else:
+                        return str(alignment)  # 如果是字符串直接返回
+                return {'status': '', 'score': 0}
             
             # 使用apply向量化计算排列
-            result_df['多空排列'] = result_df.apply(calc_alignment_vectorized, axis=1)
+            alignment_results = result_df.apply(calc_alignment_vectorized, axis=1)
+            
+            # 提取状态和评分到独立列
+            result_df['多空排列'] = alignment_results.apply(
+                lambda x: x.get('status', '') if isinstance(x, dict) else str(x)
+            )
+            result_df['排列评分'] = alignment_results.apply(
+                lambda x: x.get('score', 0) if isinstance(x, dict) else 0
+            )
             
             # Step 6: 确保日期格式正确并按时间倒序排列（最新在顶部）
             # 转换日期格式以确保正确排序

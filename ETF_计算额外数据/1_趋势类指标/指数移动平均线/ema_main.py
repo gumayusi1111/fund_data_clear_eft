@@ -8,12 +8,14 @@ EMA主程序 - 中短期专版
 支持单个ETF计算、批量处理、快速分析等功能
 
 使用示例:
+    python ema_main.py                                     # 默认：批量计算所有门槛（3000万+5000万）
     python ema_main.py --etf 510050.SH                    # 计算单个ETF
-    python ema_main.py --screening                         # 处理所有筛选结果
     python ema_main.py --screening --threshold 3000万门槛   # 处理指定门槛
     python ema_main.py --quick 510050.SH                  # 快速分析
     python ema_main.py --status                           # 查看系统状态
     python ema_main.py --validate 510050.SH              # 验证计算正确性
+    
+🚀 默认运行：直接运行即可计算所有ETF的EMA指标
 """
 
 import argparse
@@ -29,9 +31,9 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例:
+  %(prog)s                                    # 默认：批量计算所有门槛（3000万+5000万）🚀
   %(prog)s --etf 510050.SH                    # 计算单个ETF
   %(prog)s --etf 510050.SH --verbose          # 详细模式
-  %(prog)s --screening                         # 处理所有筛选结果
   %(prog)s --screening --threshold 3000万门槛   # 处理指定门槛
   %(prog)s --quick 510050.SH                  # 快速分析（不保存文件）
   %(prog)s --status                           # 查看系统状态
@@ -41,11 +43,17 @@ def parse_arguments():
 配置选项:
   %(prog)s --etf 510050.SH --adj-type 后复权   # 指定复权类型
   %(prog)s --etf 510050.SH --periods 5 10 20  # 自定义EMA周期
+  
+🎯 默认模式特点:
+  - 自动处理3000万和5000万门槛
+  - 使用完整历史数据（不限行数）
+  - 与SMA/WMA系统保持一致
+  - 直接运行无需参数
         """
     )
     
-    # 基础操作组
-    operation_group = parser.add_mutually_exclusive_group(required=True)
+    # 基础操作组（允许默认操作）
+    operation_group = parser.add_mutually_exclusive_group(required=False)
     operation_group.add_argument('--etf', type=str, help='计算指定ETF的EMA指标')
     operation_group.add_argument('--screening', action='store_true', help='批量处理筛选结果')
     operation_group.add_argument('--quick', type=str, help='快速分析模式（不保存文件）')
@@ -90,8 +98,37 @@ def main():
             ema_periods=args.periods
         )
         
+        # 🚀 默认模式：批量处理所有门槛（模仿SMA/WMA）
+        if not any([args.etf, args.screening, args.quick, args.status, args.validate, args.list]):
+            print("🔍 默认模式：EMA批量计算所有门槛...")
+            
+            # 处理3000万和5000万门槛
+            thresholds = ["3000万门槛", "5000万门槛"]
+            print(f"📊 处理门槛: {', '.join(thresholds)}")
+            
+            total_success = 0
+            total_processed = 0
+            
+            for threshold in thresholds:
+                print(f"\n📈 开始处理 {threshold}...")
+                result = controller.calculate_screening_results(
+                    threshold=threshold,
+                    max_etfs=args.max_etfs,
+                    verbose=args.verbose
+                )
+                
+                if result.get('success', False):
+                    print(f"✅ {threshold} 处理完成: {result['success_count']}/{result['processed_count']}")
+                    total_success += result['success_count']
+                    total_processed += result['processed_count']
+                else:
+                    print(f"❌ {threshold} 处理失败: {result.get('error', '未知错误')}")
+            
+            print(f"\n🎉 批量处理完成！总计: {total_success}/{total_processed}")
+            return
+        
         # 根据参数执行不同操作
-        if args.etf:
+        elif args.etf:
             # 单个ETF计算
             result = controller.calculate_single_etf(
                 etf_code=args.etf,

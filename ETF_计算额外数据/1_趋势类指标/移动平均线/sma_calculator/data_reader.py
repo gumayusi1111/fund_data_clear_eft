@@ -97,9 +97,10 @@ class ETFDataReader:
             if df is None:
                 return None
             
-            # 数据限制：只取最近required_rows行
-            if len(df) > self.config.required_rows:
-                df = df.tail(self.config.required_rows)
+            # 🔬 数据策略：使用所有可用数据，不人为限制
+            # 原数据是什么就是什么，能算多少就算多少
+            # if len(df) > self.config.required_rows:
+            #     df = df.tail(self.config.required_rows)  # 已禁用：不再限制数据行数
             
             actual_rows = len(df)
             print(f"📊 {etf_code}: {actual_rows}/{total_rows} 行数据 ({df['日期'].iloc[0]} 到 {df['日期'].iloc[-1]})")

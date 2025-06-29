@@ -232,7 +232,7 @@ class ResultProcessor:
                 'calculation_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 'adj_type': self.config.adj_type,
                 'wma_periods': self.config.wma_periods,
-                'optimization': f'只读取最新{self.config.required_rows}行数据',
+                'optimization': f'使用所有可用数据，不限制行数',
                 'data_source': f'ETF日更/{self.config.get_adj_folder_name()}'
             },
             'results': results_list
@@ -426,8 +426,8 @@ class ResultProcessor:
                 # 获取当前日期及之前的数据用于计算WMA
                 current_data = df_sorted.iloc[:i + 1]
                 
-                # 只取最近50行进行计算（性能优化）
-                calc_data = current_data.tail(50)
+                # 🔬 使用所有可用数据进行计算（保证准确性）
+                calc_data = current_data
                 
                 # 计算当前日期的WMA
                 wma_results = wma_engine.calculate_all_wma(calc_data)
