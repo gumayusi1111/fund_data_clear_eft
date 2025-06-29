@@ -98,7 +98,7 @@ class ETFDataReader:
                 etf_code = file.replace('.csv', '')
                 etf_codes.append(etf_code)
         
-        return sorted(etf_codes)
+            return sorted(etf_codes)
     
     def read_etf_data(self, etf_code: str) -> Optional[Tuple[pd.DataFrame, int]]:
         """
@@ -177,7 +177,7 @@ class ETFDataReader:
                 return None
             
             print(f"📊 完整数据读取: {etf_code} - {len(df)}行历史数据")
-            return df
+        return df
             
         except Exception as e:
             print(f"❌ 完整数据读取失败 {etf_code}: {e}")
@@ -233,5 +233,5 @@ class ETFDataReader:
         🔬 科学内存管理: 确保临时数据完全清理
         """
         if df is not None:
-            del df
+        del df
         print("�� 临时数据已清理，内存释放完成") 

@@ -260,40 +260,40 @@ def main():
         if args.etf_codes:
             etf_codes = args.etf_codes
             print(f"📊 开始计算 {len(etf_codes)} 个指定ETF的WMA指标...")
-            print(f"📁 数据路径: {controller.config.data_path}")
-            print(f"📈 复权类型: {args.adj_type}")
-            print(f"🎯 计算周期: {args.periods}")
-            print(f"⚡ 数据优化: 只读取最新{controller.config.required_rows}行")
-            print(f"📂 输出目录: {controller.config.default_output_dir} 🔬")
-            print(f"🔬 高级分析: {'开启' if args.advanced else '关闭'}")
+        print(f"📁 数据路径: {controller.config.data_path}")
+        print(f"📈 复权类型: {args.adj_type}")
+        print(f"🎯 计算周期: {args.periods}")
+        print(f"⚡ 数据优化: 只读取最新{controller.config.required_rows}行")
+        print(f"📂 输出目录: {controller.config.default_output_dir} 🔬")
+        print(f"🔬 高级分析: {'开启' if args.advanced else '关闭'}")
+        
+        # 执行完整的计算和保存流程
+        result_summary = controller.calculate_and_save(
+            etf_codes=etf_codes,
+            output_dir=None,  # 🔬 使用配置中的智能输出路径
+            include_advanced_analysis=args.advanced
+        )
+        
+        # 总结
+        print("\n" + "=" * 60)
+        if result_summary['success']:
+            print(f"✅ WMA计算完成! 成功处理 {result_summary['processed_etfs']}/{result_summary['total_etfs']} 个ETF")
+            print(f"📊 成功率: {result_summary['success_rate']:.1f}%")
             
-            # 执行完整的计算和保存流程
-            result_summary = controller.calculate_and_save(
-                etf_codes=etf_codes,
-                output_dir=None,  # 🔬 使用配置中的智能输出路径
-                include_advanced_analysis=args.advanced
-            )
+            print(f"\n🛡️ 数据处理确认:")
+            print(f"   - 所有原始CSV文件完全未被修改")
+            print(f"   - 临时数据已完全清理")
+            print(f"   - 只生成精简结果文件")
+            print(f"   - 数据处理效率大幅提升")
+            print(f"   - 复权类型: {args.adj_type}")
+            print(f"   - 模块化架构: 组件职责清晰")
             
-            # 总结
-            print("\n" + "=" * 60)
-            if result_summary['success']:
-                print(f"✅ WMA计算完成! 成功处理 {result_summary['processed_etfs']}/{result_summary['total_etfs']} 个ETF")
-                print(f"📊 成功率: {result_summary['success_rate']:.1f}%")
-                
-                print(f"\n🛡️ 数据处理确认:")
-                print(f"   - 所有原始CSV文件完全未被修改")
-                print(f"   - 临时数据已完全清理")
-                print(f"   - 只生成精简结果文件")
-                print(f"   - 数据处理效率大幅提升")
-                print(f"   - 复权类型: {args.adj_type}")
-                print(f"   - 模块化架构: 组件职责清晰")
-                
-                print(f"\n💡 查看结果:")
-                print(f"   cd {result_summary['output_directory']}")
-                print(f"   ls -la WMA_*")
-            else:
-                print(f"❌ WMA计算失败: {result_summary.get('message', '未知错误')}")
-                sys.exit(1)
+            print(f"\n💡 查看结果:")
+            print(f"   cd {result_summary['output_directory']}")
+            print(f"   ls -la WMA_*")
+        else:
+            print(f"❌ WMA计算失败: {result_summary.get('message', '未知错误')}")
+            sys.exit(1)
             
     except Exception as e:
         print(f"❌ 程序执行失败: {e}")

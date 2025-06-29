@@ -296,7 +296,7 @@ class ResultProcessor:
         return {
             'total_etfs': len(results_list),
             'successful_calculations': len(results_list)
-        }
+        } 
     
     def save_historical_results(self, etf_code: str, full_df: pd.DataFrame, 
                               latest_wma_results: Dict, threshold: str, 

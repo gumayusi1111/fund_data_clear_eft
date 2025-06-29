@@ -283,7 +283,7 @@ class WMAController:
                 trading = signals['trading_signals']
                 print(f"   🎯 信号: {trading['primary_signal']} (强度:{trading['signal_strength']}, 置信度:{trading['confidence_level']:.0f}%)")
         
-        return result
+        return result 
     
     def process_screening_results(self, thresholds: List[str] = None, 
                                 include_advanced_analysis: bool = False) -> Dict[str, List[Dict]]:
