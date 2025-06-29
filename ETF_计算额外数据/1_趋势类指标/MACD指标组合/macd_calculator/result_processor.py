@@ -64,68 +64,40 @@ class MACDResultProcessor:
         格式化MACD计算结果 - 客观数据专版
         
         Args:
-            df: 包含MACD指标的DataFrame
+            df: 包含MACD计算结果的DataFrame
             etf_code: ETF代码
             
         Returns:
-            格式化后的DataFrame（仅客观数据）
+            格式化后的DataFrame
         """
         try:
-            # 创建输出DataFrame
-            result_df = pd.DataFrame()
+            if df.empty:
+                print(f"⚠️ {etf_code}: 空的MACD结果")
+                return pd.DataFrame()
             
-            # 基础信息列
-            result_df['日期'] = df['Date'].dt.strftime('%Y-%m-%d')
-            result_df['ETF代码'] = etf_code
+            # 创建格式化后的DataFrame，按用户要求的字段顺序
+            formatted_df = pd.DataFrame({
+                'date': df['Date'].dt.strftime('%Y-%m-%d'),  # 日期格式化
+                'code': etf_code,  # ETF代码
+                'ema_fast': df['EMA_Fast'].round(6),  # 快线EMA
+                'ema_slow': df['EMA_Slow'].round(6),  # 慢线EMA
+                'dif': df['DIF'].round(6),  # ema_fast - ema_slow
+                'dea': df['DEA'].round(6),  # DIF的信号线EMA
+                'macd_bar': df['MACD'].round(6),  # (dif - dea) * 2
+                'calc_time': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')  # 脚本更新时间
+            })
             
-            # MACD核心指标（客观数据）
-            result_df['EMA快线'] = df.get('EMA_Fast', 0).round(6)
-            result_df['EMA慢线'] = df.get('EMA_Slow', 0).round(6)
-            result_df['DIF'] = df.get('DIF', 0).round(6)
-            result_df['DEA'] = df.get('DEA', 0).round(6)
-            result_df['MACD柱'] = df.get('MACD', 0).round(6)
+            # 按日期排序（最新日期在前）
+            formatted_df = formatted_df.sort_values('date', ascending=False).reset_index(drop=True)
             
-            # 🚫 已移除主观判断字段
-            # result_df['MACD信号评分'] = df.get('MACD信号评分', 0.0).round(3)
-            # result_df['MACD信号描述'] = df.get('MACD信号描述', '数据不足')
-            # result_df['交易建议'] = df.get('交易建议', '无法分析')
-            # result_df['信心水平'] = df.get('信心水平', '无')
-            
-            # 计算客观技术特征
-            result_df = self._add_objective_features(result_df)
-            
-            # 添加计算时间戳
-            result_df['计算时间'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            
-            print(f"✅ {etf_code} MACD结果格式化完成，{len(result_df)} 行数据")
-            return result_df
+            print(f"✅ {etf_code} MACD结果格式化完成，{len(formatted_df)} 行数据")
+            return formatted_df
             
         except Exception as e:
-            print(f"❌ {etf_code} 结果格式化失败: {e}")
+            print(f"❌ {etf_code} MACD结果格式化失败: {e}")
             return pd.DataFrame()
     
-    def _add_objective_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """添加客观技术特征"""
-        try:
-            # DIF/DEA位置关系（客观数据）
-            df['DIF高于DEA'] = (df['DIF'] > df['DEA']).astype(str).replace({'True': '是', 'False': '否'})
-            df['DIF高于零轴'] = (df['DIF'] > 0).astype(str).replace({'True': '是', 'False': '否'})
-            df['DEA高于零轴'] = (df['DEA'] > 0).astype(str).replace({'True': '是', 'False': '否'})
-            
-            # DIF/DEA差值和强度（客观数据）
-            df['DIF_DEA差值'] = (df['DIF'] - df['DEA']).round(6)
-            df['DIF强度'] = df['DIF'].abs().round(6)
-            df['MACD强度'] = df['MACD柱'].abs().round(6)
-            
-            # 🚫 已移除主观判断标记
-            # df['金叉死叉'] = self._identify_crossover_signals(df)
-            # df['零轴穿越'] = self._identify_zero_crossovers(df)
-            
-            return df
-            
-        except Exception as e:
-            print(f"⚠️ 添加客观特征失败: {e}")
-            return df
+
     
     def save_single_etf_result(self, result_df: pd.DataFrame, etf_code: str, 
                               threshold_type: str = "3000万门槛") -> bool:
@@ -337,11 +309,11 @@ class MACDResultProcessor:
                 df = pd.read_csv(file_path)
                 
                 # 检查必要列（客观数据）
-                required_columns = ['日期', 'ETF代码', 'DIF', 'DEA', 'MACD柱']
+                required_columns = ['date', 'code', 'dif', 'dea', 'macd_bar']
                 has_required_columns = all(col in df.columns for col in required_columns)
                 
                 # 检查数据质量
-                has_valid_data = len(df) > 0 and not df['DIF'].isna().all()
+                has_valid_data = len(df) > 0 and not df['dif'].isna().all()
                 
                 validation_results[etf_code] = has_required_columns and has_valid_data
                 
