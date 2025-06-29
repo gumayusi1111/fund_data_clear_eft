@@ -220,21 +220,13 @@ def handle_single_etf(controller: SMAController, etf_code: str, verbose: bool = 
         smadiff_5_20_pct = sma_values.get('SMA_DIFF_5_20_PCT')
         smadiff_5_10 = sma_values.get('SMA_DIFF_5_10')
         
-        if smadiff_5_20 is not None:
-            print(f"   📊 SMA差值:")
-            trend_icon = "📈" if smadiff_5_20 > 0 else ("📉" if smadiff_5_20 < 0 else "➡️")
-            print(f"      MA5-MA20: {smadiff_5_20:+.6f} ({smadiff_5_20_pct:+.2f}%) {trend_icon}")
-            
-            if smadiff_5_10 is not None:
-                print(f"      MA5-MA10: {smadiff_5_10:+.6f}")
+        # 🚫 已移除主观判断显示 - 只保留客观数据
+        print(f"   📊 SMA差值:")
+        trend_icon = "📈" if smadiff_5_20 > 0 else ("📉" if smadiff_5_20 < 0 else "➡️")
+        print(f"      MA5-MA20: {smadiff_5_20:+.6f} ({smadiff_5_20_pct:+.2f}%) {trend_icon}")
         
-        print(f"   🔄 多空排列: {signals['alignment']}")
-        
-        if verbose and 'trading_signals' in signals:
-            trading = signals['trading_signals']
-            print(f"   🎯 交易信号: {trading['primary_signal']}")
-            print(f"   💪 信号强度: {trading['signal_strength']}")
-            print(f"   🎲 置信度: {trading['confidence_level']:.0f}%")
+        if smadiff_5_10 is not None:
+            print(f"      MA5-MA10: {smadiff_5_10:+.6f}")
         
         return True
     else:
@@ -249,9 +241,6 @@ def handle_quick_analysis(controller: SMAController, etf_code: str) -> bool:
     
     result = controller.quick_analysis(etf_code)
     return result is not None
-
-
-
 
 
 def handle_system_status(controller: SMAController):

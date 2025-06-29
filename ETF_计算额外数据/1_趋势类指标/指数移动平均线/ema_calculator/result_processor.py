@@ -55,16 +55,13 @@ class ResultProcessor:
             ema_diff = ema_values.get('ema_diff_12_26', 0)
             ema_diff_pct = ema_values.get('ema_diff_12_26_pct', 0)
             
-            # EMA排列和评分（与WMA/SMA系统保持一致）
-            arrangement = signals.get('arrangement', {}).get('arrangement', '未知排列')
-            arrangement_score = signals.get('arrangement', {}).get('score', 0.0)
+            # 🚫 已移除EMA排列和评分 - 只保留准确数据
             
             # 构建CSV行
             csv_row = (
                 f"{etf_code},{adj_type},{date},{close},{change_pct:+.3f},"
                 f"{ema12:.6f},{ema26:.6f},"
-                f"{ema_diff:+.6f},{ema_diff_pct:+.3f},"
-                f"{arrangement},{arrangement_score}"
+                f"{ema_diff:+.6f},{ema_diff_pct:+.3f}"
             )
             
             return csv_row
@@ -75,12 +72,12 @@ class ResultProcessor:
     
     def get_csv_header(self) -> str:
         """
-        获取CSV文件头部 - 与WMA/SMA系统保持一致
+        获取CSV文件头部 - 简化版，只保留数据计算
         
         Returns:
             str: CSV头部
         """
-        return "ETF代码,复权类型,最新日期,最新价格,涨跌幅(%),EMA12,EMA26,EMA差值(12-26),EMA差值(%),EMA排列,排列评分"
+        return "ETF代码,复权类型,最新日期,最新价格,涨跌幅(%),EMA12,EMA26,EMA差值(12-26),EMA差值(%)"
     
     def format_console_output(self, etf_code: str, price_info: Dict,
                             ema_values: Dict, signals: Dict) -> str:
@@ -122,21 +119,13 @@ class ResultProcessor:
                 trend_icon = '➡️'
                 diff_sign = ''
             
-            # EMA排列
-            arrangement = signals.get('arrangement', {}).get('arrangement', '未知排列')
-            
-            # 交易信号
-            final_signal = signals.get('final_signal', '观望')
-            total_score = signals.get('total_score', 0)
-            confidence = signals.get('confidence', 0)
+            # 🚫 已移除EMA排列和交易信号 - 只保留数据计算
             
             # 构建输出
             output = f"""📊 {etf_code} EMA分析结果:
    💰 价格: {close} ({change_sign}{change_pct:.3f}%) [{date}]
    🎯 EMA: EMA12:{ema12:.6f} EMA26:{ema26:.6f}
-   📊 EMA差值: {diff_sign}{ema_diff:.6f} ({ema_diff_pct:+.3f}%) {trend_icon}
-   🔄 排列: {arrangement}
-   🎯 信号: {final_signal} (强度:{total_score}, 置信度:{confidence}%)"""
+   📊 EMA差值: {diff_sign}{ema_diff:.6f} ({ema_diff_pct:+.3f}%) {trend_icon}"""
             
             return output
             
@@ -270,10 +259,7 @@ class ResultProcessor:
                     print(f"⚠️  {etf_code}: EMA值异常 {field}={ema_values[field]}")
                     return False
             
-            # 验证信号数据
-            if 'arrangement' not in signals:
-                print(f"⚠️  {etf_code}: 缺少排列信息")
-                return False
+            # 🚫 已移除信号数据验证 - 简化模式不需要排列信息
             
             print(f"✅ {etf_code}: 结果数据验证通过")
             return True
@@ -432,44 +418,7 @@ class ResultProcessor:
                     ''
                 )
             
-            # Step 5: 🔬 批量计算科学EMA排列（使用signal_analyzer）
-            from .signal_analyzer import SignalAnalyzer
-            signal_analyzer = SignalAnalyzer(self.config)
-            
-            def calc_scientific_ema_alignment_vectorized(row):
-                """使用科学方法计算EMA排列和评分"""
-                if pd.notna(row['EMA12']) and pd.notna(row['EMA26']):
-                    ema12 = row['EMA12']
-                    ema26 = row['EMA26']
-                    
-                    # 获取当前价格（最接近的收盘价）
-                    row_index = row.name
-                    current_price = prices.iloc[row_index] if row_index < len(prices) else ema12
-                    
-                    # 🔬 使用科学方法分析排列
-                    arrangement_status, arrangement_score, details = signal_analyzer._scientific_ema_alignment_analysis(
-                        current_price, ema12, ema26
-                    )
-                    
-                    return {
-                        'arrangement': arrangement_status,
-                        'score': arrangement_score
-                    }
-                return {
-                    'arrangement': '',
-                    'score': 0.0
-                }
-            
-            # 使用apply向量化计算科学排列
-            alignment_results = result_df.apply(calc_scientific_ema_alignment_vectorized, axis=1)
-            
-            # 提取排列状态和评分到独立列（与WMA/SMA格式一致）
-            result_df['EMA排列'] = alignment_results.apply(
-                lambda x: x.get('arrangement', '') if isinstance(x, dict) else ''
-            )
-            result_df['排列评分'] = alignment_results.apply(
-                lambda x: x.get('score', 0.0) if isinstance(x, dict) else 0.0
-            )
+            # Step 5: 🚫 已移除复杂EMA排列计算 - 只保留准确数据
             
             # Step 6: 确保日期格式正确并按时间倒序排列（最新在顶部）
             if result_df['日期'].dtype == 'object':
@@ -486,16 +435,13 @@ class ResultProcessor:
             
             # 验证结果和排序
             valid_ema_count = result_df['EMA26'].notna().sum() if 'EMA26' in result_df.columns else 0
-            valid_scores = result_df['排列评分'].apply(lambda x: x != 0.0 and x != '').sum()
             latest_date = result_df.iloc[0]['日期']
             oldest_date = result_df.iloc[-1]['日期']
             latest_ema26 = result_df.iloc[0]['EMA26'] if 'EMA26' in result_df.columns else 'N/A'
-            latest_score = result_df.iloc[0]['排列评分'] if '排列评分' in result_df.columns else 'N/A'
             
-            print(f"   ✅ {etf_code}: 科学计算完成 - {valid_ema_count}行有效EMA数据")
-            print(f"   🔬 科学评分完成 - {valid_scores}行有效排列评分")
+            print(f"   ✅ {etf_code}: 计算完成 - {valid_ema_count}行有效EMA数据")
             print(f"   📅 最新日期: {latest_date}, 最旧日期: {oldest_date} (确认最新在顶部)")
-            print(f"   🎯 最新EMA26: {latest_ema26}, 最新排列评分: {latest_score}")
+            print(f"   🎯 最新EMA26: {latest_ema26}")
             
             return result_df
             

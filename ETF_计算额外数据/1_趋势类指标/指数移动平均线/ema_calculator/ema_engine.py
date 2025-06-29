@@ -128,18 +128,18 @@ class EMAEngine:
     
     def calculate_ema_signals(self, df: pd.DataFrame, ema_values: Dict = None) -> Dict:
         """
-        计算EMA交易信号 - 中短期专版
+        🚫 已简化：仅计算基础EMA数据，移除主观判断
         
         Args:
             df: ETF数据
             ema_values: 预计算的EMA值（避免重复计算）
             
         Returns:
-            Dict: 信号分析结果
+            Dict: 基础EMA数据结果（无主观判断）
         """
         try:
             if df.empty or len(df) < max(self.config.ema_periods):
-                return {'signal': '数据不足', 'strength': 0, 'confidence': 0}
+                return {'status': '数据不足'}
             
             # 使用预计算的EMA值或重新计算
             if ema_values is None:
@@ -147,109 +147,28 @@ class EMAEngine:
             else:
                 ema_results = ema_values
             if not ema_results:
-                return {'signal': '计算失败', 'strength': 0, 'confidence': 0}
+                return {'status': '计算失败'}
             
-            signals = {}
+            # 🚫 已移除所有主观判断代码 - 只返回基础数据
+            basic_info = {
+                'status': 'success',
+                'ema_count': len([k for k in ema_results.keys() if k.startswith('ema_')]),
+                'has_diff': 'ema_diff_12_26' in ema_results
+            }
             
-            # 基础信号分析
-            if 'ema_12' in ema_results and 'ema_26' in ema_results:
-                ema12 = ema_results['ema_12']
-                ema26 = ema_results['ema_26']
-                current_price = float(df['收盘价'].iloc[-1])
-                
-                # 1. EMA排列信号
-                if ema12 > ema26 and current_price > ema12:
-                    signals['ema_alignment'] = '多头排列'
-                    signals['alignment_score'] = 2
-                elif ema12 < ema26 and current_price < ema12:
-                    signals['ema_alignment'] = '空头排列'  
-                    signals['alignment_score'] = -2
-                else:
-                    signals['ema_alignment'] = '震荡排列'
-                    signals['alignment_score'] = 0
-                
-                # 2. EMA差值信号
-                if 'ema_diff_12_26' in ema_results:
-                    diff = ema_results['ema_diff_12_26']
-                    diff_pct = ema_results.get('ema_diff_12_26_pct', 0)
-                    
-                    if diff > 0 and diff_pct > 1.0:
-                        signals['diff_signal'] = '强势上涨'
-                        signals['diff_score'] = 3
-                    elif diff > 0:
-                        signals['diff_signal'] = '温和上涨'
-                        signals['diff_score'] = 1
-                    elif diff < 0 and abs(diff_pct) > 1.0:
-                        signals['diff_signal'] = '强势下跌'
-                        signals['diff_score'] = -3
-                    elif diff < 0:
-                        signals['diff_signal'] = '温和下跌'
-                        signals['diff_score'] = -1
-                    else:
-                        signals['diff_signal'] = '中性'
-                        signals['diff_score'] = 0
-                
-                # 3. 动量信号
-                if 'ema12_momentum' in ema_results:
-                    momentum = ema_results['ema12_momentum']
-                    if momentum > 0.001:
-                        signals['momentum_signal'] = '加速上涨'
-                        signals['momentum_score'] = 1
-                    elif momentum < -0.001:
-                        signals['momentum_signal'] = '加速下跌'
-                        signals['momentum_score'] = -1
-                    else:
-                        signals['momentum_signal'] = '动量平稳'
-                        signals['momentum_score'] = 0
-                
-                # 综合信号评分
-                total_score = (
-                    signals.get('alignment_score', 0) +
-                    signals.get('diff_score', 0) +
-                    signals.get('momentum_score', 0)
-                )
-                
-                # 信号强度判断
-                if total_score >= 4:
-                    signals['final_signal'] = '强烈买入'
-                    signals['strength'] = total_score
-                    signals['confidence'] = 85
-                elif total_score >= 2:
-                    signals['final_signal'] = '买入'
-                    signals['strength'] = total_score
-                    signals['confidence'] = 75
-                elif total_score >= 1:
-                    signals['final_signal'] = '弱势买入'
-                    signals['strength'] = total_score
-                    signals['confidence'] = 60
-                elif total_score <= -4:
-                    signals['final_signal'] = '强烈卖出'
-                    signals['strength'] = total_score
-                    signals['confidence'] = 85
-                elif total_score <= -2:
-                    signals['final_signal'] = '卖出'
-                    signals['strength'] = total_score
-                    signals['confidence'] = 75
-                elif total_score <= -1:
-                    signals['final_signal'] = '弱势卖出'
-                    signals['strength'] = total_score
-                    signals['confidence'] = 60
-                else:
-                    signals['final_signal'] = '观望'
-                    signals['strength'] = 0
-                    signals['confidence'] = 50
-                
-                print(f"🎯 EMA信号分析: {signals['final_signal']} (强度: {signals['strength']}, 置信度: {signals['confidence']}%)")
+            # 合并EMA计算结果
+            basic_info.update(ema_results)
             
-            return signals
+            print(f"✅ EMA基础数据计算完成，共{basic_info['ema_count']}个EMA指标")
+            return basic_info
             
         except Exception as e:
-            print(f"❌ EMA信号计算失败: {str(e)}")
-            return {'signal': '计算错误', 'strength': 0, 'confidence': 0}
+            print(f"❌ EMA数据计算失败: {str(e)}")
+            return {'status': '计算错误'}
     
     def get_trend_direction_icon(self, signal_data: Dict) -> str:
         """
-        获取趋势方向图标
+        🚫 已简化：获取趋势方向图标（仅基于客观数据）
         
         Args:
             signal_data: 信号数据
@@ -258,11 +177,12 @@ class EMAEngine:
             str: 趋势图标
         """
         try:
-            signal = signal_data.get('final_signal', '观望')
+            # 🚫 已移除主观判断 - 只基于客观差值数据
+            diff = signal_data.get('ema_diff_12_26', 0)
             
-            if '买入' in signal:
+            if diff > 0:
                 return '📈'
-            elif '卖出' in signal:
+            elif diff < 0:
                 return '📉'
             else:
                 return '➡️'

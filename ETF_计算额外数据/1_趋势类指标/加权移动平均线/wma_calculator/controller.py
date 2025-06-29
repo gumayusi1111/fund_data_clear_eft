@@ -11,7 +11,7 @@ from typing import List, Optional, Dict, Any
 from .config import WMAConfig
 from .data_reader import ETFDataReader
 from .wma_engine import WMAEngine
-from .signal_analyzer import SignalAnalyzer
+# from .signal_analyzer import SignalAnalyzer  # 🚫 已移除复杂分析
 from .file_manager import FileManager
 import os
 from datetime import datetime
@@ -47,7 +47,7 @@ class WMAController:
         # 初始化各个组件
         self.data_reader = ETFDataReader(self.config)
         self.wma_engine = WMAEngine(self.config)
-        self.signal_analyzer = SignalAnalyzer(self.config)
+        # self.signal_analyzer = SignalAnalyzer(self.config)  # 🚫 已移除复杂分析
         self.file_manager = FileManager(output_dir)
         
         print("✅ 所有组件初始化完成")
@@ -94,37 +94,14 @@ class WMAController:
             latest_price = self.data_reader.get_latest_price_info(df)
             date_range = self.data_reader.get_date_range(df)
             
-            # 步骤4: 信号分析
-            alignment = self.signal_analyzer.calculate_alignment(wma_results)
-            price_signals = self.signal_analyzer.calculate_price_signals(
-                latest_price['close'], wma_results
-            )
-            
+            # 步骤4: 🚫 简化信号分析 - 只保留基础数据
             signals = {
-                'alignment': alignment,
-                'price_vs_wma': price_signals
+                'status': 'simplified'  # 标记为简化模式
             }
             
-            # 步骤5: 高级分析（可选）
+            # 步骤5: 🚫 已移除高级分析 - 只保留基础数据计算
             wma_statistics = None
             quality_metrics = None
-            
-            if include_advanced_analysis:
-                wma_statistics = self.wma_engine.calculate_wma_statistics(df, wma_results)
-                quality_metrics = self.wma_engine.get_wma_quality_metrics(df, wma_results)
-                
-                # 趋势分析
-                trend_analysis = self.signal_analyzer.analyze_trend_signals(wma_results)
-                
-                # 交易信号
-                trading_signals = self.signal_analyzer.generate_trading_signals(
-                    latest_price['close'], wma_results, alignment, trend_analysis
-                )
-                
-                signals.update({
-                    'trend_analysis': trend_analysis,
-                    'trading_signals': trading_signals
-                })
             
             # 步骤6: 数据优化信息
             data_optimization = {
@@ -248,7 +225,7 @@ class WMAController:
             Dict: 分析结果或None
         """
         print(f"⚡ 快速分析: {etf_code}")
-        result = self.process_single_etf(etf_code, include_advanced_analysis=True)
+        result = self.process_single_etf(etf_code, include_advanced_analysis=False)
         
         if result:
             # 显示关键信息
@@ -265,7 +242,7 @@ class WMAController:
                     print(f"WMA{period}:{wma_val:.3f} ", end="")
             print()
             
-            # 🆕 显示WMA差值信息
+            # 显示WMA差值信息
             wmadiff_5_20 = wma_values.get('WMA_DIFF_5_20')
             wmadiff_5_20_pct = wma_values.get('WMA_DIFF_5_20_PCT')
             wmadiff_3_5 = wma_values.get('WMA_DIFF_3_5')
@@ -277,26 +254,7 @@ class WMAController:
                 if wmadiff_3_5 is not None:
                     print(f"              3-5={wmadiff_3_5:+.6f} (超短期动量)")
             
-            # 🔬 显示科学的排列分析结果
-            alignment = signals['alignment']
-            if isinstance(alignment, dict):
-                status = alignment.get('status', '未知')
-                score = alignment.get('score', 0)
-                strength = alignment.get('strength_level', '未知')
-                print(f"   🔄 排列: {status} (评分:{score:+.2f}, 强度:{strength})")
-                
-                # 显示详细差距信息
-                if 'details' in alignment and isinstance(alignment['details'], dict):
-                    details = alignment['details']
-                    avg_diff = details.get('avg_diff_pct', 0)
-                    min_diff = details.get('min_diff_pct', 0)
-                    print(f"        差距分析: 平均{avg_diff:.2f}%, 最小{min_diff:.2f}%")
-            else:
-                print(f"   🔄 排列: {alignment}")
-            
-            if 'trading_signals' in signals:
-                trading = signals['trading_signals']
-                print(f"   🎯 信号: {trading['primary_signal']} (强度:{trading['signal_strength']}, 置信度:{trading['confidence_level']:.0f}%)")
+            # 🚫 已移除复杂排列和信号分析 - 只保留数据计算
         
         return result 
     

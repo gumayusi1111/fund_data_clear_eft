@@ -139,12 +139,10 @@ class ResultProcessor:
             results_list: 结果列表
             csv_file: CSV文件路径
             
-        🔬 CSV结构:
-        - ETF基本信息: 代码、复权类型、日期、价格
+        🔬 简化CSV结构:
+        - ETF基本信息: 代码、复权类型、日期、价格、涨跌幅
         - WMA指标: 各周期WMA值
-        - 🆕 WMA差值: 短期与长期WMA的差值指标
-        - 技术分析: 多空排列、趋势分析
-        - 交易信号: 买卖建议、置信度
+        - WMA差值: 短期与长期WMA的差值指标
         """
         try:
             # 准备CSV数据
@@ -186,28 +184,8 @@ class ResultProcessor:
                     else:
                         row[csv_column_name] = ''
                 
-                # 🔬 重要信号 - 只保留核心的两个字段
-                signals = result['signals']
-                alignment = signals.get('alignment', '')
-                
-                # 如果alignment是字典，提取关键信息
-                if isinstance(alignment, dict):
-                    status = alignment.get('status', '未知')
-                    score = alignment.get('score', 0)
-                    # 只保留两个核心字段
-                    row['多空排列'] = f"{status}"
-                    row['排列评分'] = round(float(score), 2) if score != 0 else 0
-                else:
-                    # 如果是字符串，直接使用
-                    row['多空排列'] = str(alignment)
-                    row['排列评分'] = 0
-                
-                # 🔬 高级分析字段（仅在开启时显示）
-                if 'trading_signals' in signals:
-                    trading_signals = signals['trading_signals']
-                    row['交易信号'] = trading_signals.get('primary_signal', '')
-                    row['信号强度'] = trading_signals.get('signal_strength', '')
-                    row['置信度(%)'] = trading_signals.get('confidence_level', '')
+                # 🚫 已移除复杂分析字段：多空排列、评分、交易信号等
+                # 只保留准确的数据计算，不包含主观判断
                 
                 csv_data.append(row)
             
@@ -218,8 +196,8 @@ class ResultProcessor:
                     writer.writeheader()
                     writer.writerows(csv_data)
                 
-                print(f"   📈 CSV结构: {len(csv_data)}行 × {len(csv_data[0])}列")
-                print(f"   🆕 新增字段: WMA差值指标 (绝对值+相对百分比)")
+                print(f"   📈 简化CSV结构: {len(csv_data)}行 × {len(csv_data[0])}列")
+                print(f"   ✅ 已移除复杂分析字段，只保留准确数据计算")
             
         except Exception as e:
             print(f"❌ CSV文件创建失败: {e}")
@@ -265,7 +243,7 @@ class ResultProcessor:
                     if wma_val:
                         f.write(f"      WMA{period}: {wma_val:.6f}\n")
                 
-                f.write(f"\n   🔄 多空排列: {result['signals']['alignment']}\n")
+                # 🚫 已移除多空排列 - 只保留数据计算
                 f.write("-" * 40 + "\n\n")
     
     def display_results(self, results_list: List[Dict]):
@@ -289,7 +267,7 @@ class ResultProcessor:
                     print(f" WMA{period}:{wma_val:.3f}", end="")
             print()
             
-            # 🆕 显示WMA差值信息
+            # 显示WMA差值信息
             wma_values = result['wma_values']
             wmadiff_5_20 = wma_values.get('WMA_DIFF_5_20')
             wmadiff_5_20_pct = wma_values.get('WMA_DIFF_5_20_PCT')
@@ -298,7 +276,7 @@ class ResultProcessor:
                 trend_indicator = "↗️" if wmadiff_5_20 > 0 else ("↘️" if wmadiff_5_20 < 0 else "➡️")
                 print(f"   📊 WMA差值: {wmadiff_5_20:+.6f} ({wmadiff_5_20_pct:+.2f}%) {trend_indicator}")
             
-            print(f"   🔄 排列: {result['signals']['alignment']}")
+            # 🚫 已移除排列显示 - 只保留数据计算
     
     def get_result_stats(self, results_list: List[Dict]) -> Dict:
         """获取结果统计信息"""
@@ -393,7 +371,7 @@ class ResultProcessor:
         try:
             # 导入必要组件
             from .wma_engine import WMAEngine
-            from .signal_analyzer import SignalAnalyzer
+            # from .signal_analyzer import SignalAnalyzer  # 🚫 已移除复杂分析
             
             # 确保数据按时间正序排列（旧到新，用于计算）
             df_sorted = df.sort_values('日期', ascending=True).copy()
@@ -406,14 +384,12 @@ class ResultProcessor:
             df_sorted['WMA差值5-20'] = ''
             df_sorted['WMA差值3-5'] = ''
             df_sorted['WMA差值5-20(%)'] = ''
-            df_sorted['多空排列'] = ''
-            df_sorted['排列评分'] = ''
             
             print(f"   🔄 {etf_code}: 计算{len(df_sorted)}行历史WMA数据...")
             
             # 初始化计算引擎（复用提高性能）
             wma_engine = WMAEngine(self.config)
-            signal_analyzer = SignalAnalyzer(self.config)
+            # signal_analyzer = SignalAnalyzer(self.config)  # 🚫 已移除复杂分析
             
             # 批量计算WMA（优化性能）
             total_rows = len(df_sorted)
@@ -457,19 +433,7 @@ class ResultProcessor:
                                 else:
                                     df_sorted.iloc[i, df_sorted.columns.get_loc(column_name)] = round(diff_val, 6)
                     
-                    # 计算多空排列（只有当所有WMA都有数据时）
-                    if i >= max_period - 1:
-                        alignment = signal_analyzer.calculate_alignment(wma_results)
-                        
-                        # 🔬 处理字典格式，提取关键信息
-                        if isinstance(alignment, dict):
-                            status = alignment.get('status', '未知')
-                            score = alignment.get('score', 0)
-                            df_sorted.iloc[i, df_sorted.columns.get_loc('多空排列')] = status
-                            df_sorted.iloc[i, df_sorted.columns.get_loc('排列评分')] = round(float(score), 2) if score != 0 else 0
-                        else:
-                            df_sorted.iloc[i, df_sorted.columns.get_loc('多空排列')] = str(alignment)
-                            df_sorted.iloc[i, df_sorted.columns.get_loc('排列评分')] = 0
+                    # 🚫 已移除多空排列计算 - 只保留准确数据
                 
                 processed_count += 1
                 
@@ -565,33 +529,7 @@ class ResultProcessor:
                     ''
                 )
             
-            # Step 5: 批量计算多空排列（向量化）
-            from .signal_analyzer import SignalAnalyzer
-            signal_analyzer = SignalAnalyzer(self.config)
-            
-            def calc_alignment_vectorized(row):
-                if pd.notna(row['WMA20']):
-                    wma_dict = {
-                        'WMA_3': row.get('WMA3'),
-                        'WMA_5': row.get('WMA5'),
-                        'WMA_10': row.get('WMA10'),
-                        'WMA_20': row.get('WMA20')
-                    }
-                    alignment = signal_analyzer.calculate_alignment(wma_dict)
-                    
-                    # 🔬 处理字典格式，提取关键信息
-                    if isinstance(alignment, dict):
-                        status = alignment.get('status', '未知')
-                        score = alignment.get('score', 0)
-                        return status, round(float(score), 2) if score != 0 else 0
-                    else:
-                        return str(alignment), 0  # 字符串格式，评分为0
-                return '', 0
-            
-            # 使用apply向量化计算排列，同时获取状态和评分
-            alignment_results = result_df.apply(calc_alignment_vectorized, axis=1, result_type='expand')
-            result_df['多空排列'] = alignment_results[0]
-            result_df['排列评分'] = alignment_results[1]
+            # Step 5: 🚫 已移除多空排列计算 - 只保留准确数据
             
             # Step 6: 确保日期格式正确并按时间倒序排列（最新在顶部）
             # 转换日期格式以确保正确排序

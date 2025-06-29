@@ -26,7 +26,7 @@ __author__ = "ETF数据处理系统"
 from .config import EMAConfig
 from .data_reader import ETFDataReader
 from .ema_engine import EMAEngine
-from .signal_analyzer import SignalAnalyzer
+# from .signal_analyzer import SignalAnalyzer  # 🚫 已移除复杂分析
 from .result_processor import ResultProcessor
 from .file_manager import FileManager
 from .controller import EMAController
@@ -36,7 +36,7 @@ __all__ = [
     'EMAConfig',
     'ETFDataReader', 
     'EMAEngine',
-    'SignalAnalyzer',
+    # 'SignalAnalyzer',  # 🚫 已移除复杂分析
     'ResultProcessor',
     'FileManager',
     'EMAController'

@@ -26,7 +26,7 @@ __author__ = "ETF数据处理系统"
 from .config import SMAConfig
 from .data_reader import ETFDataReader
 from .sma_engine import SMAEngine
-from .signal_analyzer import SignalAnalyzer
+# from .signal_analyzer import SignalAnalyzer  # 🚫 已移除复杂分析
 from .result_processor import ResultProcessor
 from .file_manager import FileManager
 from .controller import SMAController
@@ -36,7 +36,7 @@ __all__ = [
     'SMAConfig',
     'ETFDataReader', 
     'SMAEngine',
-    'SignalAnalyzer',
+    # 'SignalAnalyzer',  # 🚫 已移除复杂分析
     'ResultProcessor',
     'FileManager',
     'SMAController'

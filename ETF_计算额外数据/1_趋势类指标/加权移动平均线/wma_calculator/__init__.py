@@ -27,7 +27,7 @@ __author__ = "ETF数据处理系统"
 from .config import WMAConfig
 from .data_reader import ETFDataReader
 from .wma_engine import WMAEngine
-from .signal_analyzer import SignalAnalyzer
+# from .signal_analyzer import SignalAnalyzer  # 🚫 已移除复杂分析
 from .result_processor import ResultProcessor
 from .file_manager import FileManager
 from .controller import WMAController
@@ -37,7 +37,7 @@ __all__ = [
     'WMAConfig',
     'ETFDataReader', 
     'WMAEngine',
-    'SignalAnalyzer',
+    # 'SignalAnalyzer',  # 🚫 已移除复杂分析
     'ResultProcessor',
     'FileManager',
     'WMAController'

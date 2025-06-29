@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 from .config import EMAConfig
 from .data_reader import ETFDataReader
 from .ema_engine import EMAEngine
-from .signal_analyzer import SignalAnalyzer
+# from .signal_analyzer import SignalAnalyzer  # 🚫 已移除复杂分析
 from .result_processor import ResultProcessor
 from .file_manager import FileManager
 
@@ -37,7 +37,7 @@ class EMAController:
         # 初始化各个模块
         self.data_reader = ETFDataReader(self.config)
         self.ema_engine = EMAEngine(self.config)
-        self.signal_analyzer = SignalAnalyzer(self.config)
+        # self.signal_analyzer = SignalAnalyzer(self.config)  # 🚫 已移除复杂分析
         self.result_processor = ResultProcessor(self.config)
         self.file_manager = FileManager(self.config)
         
@@ -83,8 +83,10 @@ class EMAController:
             # 4. 获取价格信息
             price_info = self.data_reader.get_latest_price_info(df)
             
-            # 5. 信号分析（传入预计算的EMA值）
-            signals = self.signal_analyzer.get_trading_signals(df, ema_values)
+            # 5. 🚫 简化信号分析 - 只保留基础数据
+            signals = {
+                'status': 'simplified'  # 标记为简化模式
+            }
             
             # 6. 验证结果（传入预计算的EMA值）
             if not self.result_processor.validate_result_data(etf_code, price_info, ema_values, signals):
@@ -114,9 +116,8 @@ class EMAController:
             if verbose:
                 print(console_output)
             else:
-                # 简化输出
-                signal_display = self.signal_analyzer.format_signal_display(signals)
-                print(f"✅ {etf_code}: {signal_display}")
+                # 🚫 简化输出 - 只显示基础信息
+                print(f"✅ {etf_code}: EMA计算完成")
             
             # 10. 构建返回结果
             result = {

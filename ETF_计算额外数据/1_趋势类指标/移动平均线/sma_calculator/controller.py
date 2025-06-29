@@ -12,7 +12,7 @@ from typing import List, Optional, Dict, Any
 from .config import SMAConfig
 from .data_reader import ETFDataReader
 from .sma_engine import SMAEngine
-from .signal_analyzer import SignalAnalyzer
+# from .signal_analyzer import SignalAnalyzer  # 🚫 已移除复杂分析
 from .result_processor import ResultProcessor
 from .file_manager import FileManager
 import os
@@ -49,7 +49,7 @@ class SMAController:
         # 初始化各个组件
         self.data_reader = ETFDataReader(self.config)
         self.sma_engine = SMAEngine(self.config)
-        self.signal_analyzer = SignalAnalyzer(self.config)
+        # self.signal_analyzer = SignalAnalyzer(self.config)  # 🚫 已移除复杂分析
         self.file_manager = FileManager(output_dir)
         self.result_processor = ResultProcessor(self.config, self.file_manager)
         
@@ -97,34 +97,9 @@ class SMAController:
             latest_price = self.data_reader.get_latest_price_info(df)
             date_range = self.data_reader.get_date_range(df)
             
-            # 步骤4: 信号分析
-            alignment = self.signal_analyzer.calculate_alignment(sma_results)
-            price_signals = self.signal_analyzer.calculate_price_signals(
-                latest_price['close'], sma_results
-            )
-            
-            # 步骤5: 趋势分析和交易信号
-            trend_analysis = self.signal_analyzer.analyze_trend_signals(sma_results)
-            trading_signals = self.signal_analyzer.generate_trading_signals(
-                latest_price['close'], sma_results, alignment, trend_analysis
-            )
-            
-            # 🔬 确保alignment采用统一格式（支持新的字典返回值）
-            if isinstance(alignment, dict):
-                alignment_info = alignment
-            else:
-                alignment_info = {
-                    'status': str(alignment),
-                    'score': 0,
-                    'strength_level': '未知',
-                    'details': {}
-                }
-            
+            # 步骤4: 🚫 简化信号分析 - 只保留基础数据
             signals = {
-                'alignment': alignment_info,  # 保存完整的alignment信息 
-                'price_vs_sma': price_signals,
-                'trend_analysis': trend_analysis,
-                'trading_signals': trading_signals
+                'status': 'simplified'  # 标记为简化模式
             }
             
             # 步骤6: 高级分析（可选）
@@ -304,7 +279,7 @@ class SMAController:
                     print(f"MA{period}:{sma_val:.3f} ", end="")
             print()
             
-            # 🆕 显示SMA差值信息
+            # 显示SMA差值信息
             smadiff_5_20 = sma_values.get('SMA_DIFF_5_20')
             smadiff_5_20_pct = sma_values.get('SMA_DIFF_5_20_PCT')
             smadiff_5_10 = sma_values.get('SMA_DIFF_5_10')
@@ -316,18 +291,7 @@ class SMAController:
                 if smadiff_5_10 is not None:
                     print(f"              5-10={smadiff_5_10:+.6f} (短期动量)")
             
-            # 🔬 处理字典格式的alignment信息
-            alignment_info = signals['alignment']
-            if isinstance(alignment_info, dict):
-                status = alignment_info.get('status', '未知')
-                score = alignment_info.get('score', 0)
-                print(f"   🔄 排列: {status} (评分:{score})")
-            else:
-                print(f"   🔄 排列: {alignment_info}")
-            
-            if 'trading_signals' in signals:
-                trading = signals['trading_signals']
-                print(f"   🎯 信号: {trading['primary_signal']} (强度:{trading['signal_strength']}, 置信度:{trading['confidence_level']:.0f}%)")
+            # 🚫 已移除复杂排列和信号分析 - 只保留数据计算
         
         return result
     
@@ -396,7 +360,7 @@ class SMAController:
                 'components': {
                     'data_reader': 'Ready',
                     'sma_engine': 'Ready',
-                    'signal_analyzer': 'Ready',
+                    # 'signal_analyzer': 'Ready',  # 🚫 已移除复杂分析
                     'result_processor': 'Ready',
                     'file_manager': 'Ready'
                 }

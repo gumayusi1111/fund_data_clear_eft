@@ -125,15 +125,6 @@ class ResultProcessor:
                 else:
                     row_data[column_name] = ''
             
-            # 添加多空排列信息
-            alignment = signals.get('alignment', '')
-            if isinstance(alignment, dict):
-                row_data['多空排列'] = alignment.get('status', '')
-                row_data['排列评分'] = alignment.get('score', 0)
-            else:
-                row_data['多空排列'] = str(alignment)
-                row_data['排列评分'] = 0
-            
             # 创建DataFrame并保存
             df = pd.DataFrame([row_data])
             
@@ -226,10 +217,9 @@ class ResultProcessor:
         headers.extend([
             'SMA差值5-20',
             'SMA差值5-10', 
-            'SMA差值5-20(%)',
-            '多空排列',
-            '排列评分'
+            'SMA差值5-20(%)'
         ])
+        # 🚫 已移除多空排列和排列评分字段
         
         return headers
     
@@ -280,17 +270,17 @@ class ResultProcessor:
                 if smadiff_5_10 is not None:
                     display_lines.append(f"              5-10={smadiff_5_10:+.6f} (短期动量)")
             
-            # 多空排列
-            alignment = signals.get('alignment', 'Unknown')
-            display_lines.append(f"   🔄 排列: {alignment}")
+            # 🚫 已移除主观判断显示 - 只保留客观数据
+            # alignment = signals.get('alignment', 'Unknown')
+            # display_lines.append(f"   🔄 排列: {alignment}")
             
-            # 交易信号
-            if 'trading_signals' in signals:
-                trading = signals['trading_signals']
-                signal = trading.get('primary_signal', 'Unknown')
-                strength = trading.get('signal_strength', 0)
-                confidence = trading.get('confidence_level', 0)
-                display_lines.append(f"   🎯 信号: {signal} (强度:{strength}, 置信度:{confidence:.0f}%)")
+            # 🚫 已移除交易信号显示 - 只保留客观数据
+            # if 'trading_signals' in signals:
+            #     trading = signals['trading_signals']
+            #     signal = trading.get('primary_signal', 'Unknown')
+            #     strength = trading.get('signal_strength', 0)
+            #     confidence = trading.get('confidence_level', 0)
+            #     display_lines.append(f"   🎯 信号: {signal} (强度:{strength}, 置信度:{confidence:.0f}%)")
             
             return "\n".join(display_lines)
             
@@ -313,7 +303,6 @@ class ResultProcessor:
             
             total_count = len(results_list)
             successful_calcs = 0
-            alignment_stats = {}
             sma_stats = {f'MA{period}': {'count': 0, 'avg': 0, 'min': float('inf'), 'max': float('-inf')} 
                         for period in self.config.sma_periods}
             
@@ -325,10 +314,6 @@ class ResultProcessor:
                 # 检查计算是否成功
                 if any(sma_values.get(f'SMA_{p}') is not None for p in self.config.sma_periods):
                     successful_calcs += 1
-                
-                # 统计多空排列分布
-                alignment = signals.get('alignment', '未知')
-                alignment_stats[alignment] = alignment_stats.get(alignment, 0) + 1
                 
                 # 统计SMA值分布
                 for period in self.config.sma_periods:
@@ -361,7 +346,6 @@ class ResultProcessor:
                 'total_etfs': total_count,
                 'successful_calculations': successful_calcs,
                 'success_rate': round((successful_calcs / total_count) * 100, 2),
-                'alignment_distribution': alignment_stats,
                 'sma_statistics': sma_stats
             }
             
@@ -582,39 +566,11 @@ class ResultProcessor:
                     ''
                 )
             
-            # Step 5: 批量计算多空排列（向量化）
-            from .signal_analyzer import SignalAnalyzer
-            signal_analyzer = SignalAnalyzer(self.config)
+            # Step 5: 🚫 已移除多空排列计算 - 只保留准确数据
+            # from .signal_analyzer import SignalAnalyzer  # 🚫 已移除复杂分析
+            # signal_analyzer = SignalAnalyzer(self.config)  # 🚫 已移除复杂分析
             
-            def calc_alignment_vectorized(row):
-                if pd.notna(row['MA20']) if 'MA20' in row else pd.notna(row['MA60']):
-                    sma_dict = {}
-                    for period in self.config.sma_periods:
-                        ma_col = f'MA{period}'
-                        if ma_col in row:
-                            sma_dict[f'SMA_{period}'] = row[ma_col]
-                    
-                    alignment = signal_analyzer.calculate_alignment(sma_dict)
-                    
-                    # 🔬 处理字典格式，提取关键信息
-                    if isinstance(alignment, dict):
-                        status = alignment.get('status', '未知')
-                        score = alignment.get('score', 0)
-                        return {'status': status, 'score': round(float(score), 2)}
-                    else:
-                        return str(alignment)  # 如果是字符串直接返回
-                return {'status': '', 'score': 0}
-            
-            # 使用apply向量化计算排列
-            alignment_results = result_df.apply(calc_alignment_vectorized, axis=1)
-            
-            # 提取状态和评分到独立列
-            result_df['多空排列'] = alignment_results.apply(
-                lambda x: x.get('status', '') if isinstance(x, dict) else str(x)
-            )
-            result_df['排列评分'] = alignment_results.apply(
-                lambda x: x.get('score', 0) if isinstance(x, dict) else 0
-            )
+            # 🚫 已移除多空排列和评分计算 - 只保留准确数据
             
             # Step 6: 确保日期格式正确并按时间倒序排列（最新在顶部）
             # 转换日期格式以确保正确排序
