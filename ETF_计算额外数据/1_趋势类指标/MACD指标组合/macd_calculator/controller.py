@@ -90,8 +90,10 @@ class MACDController:
             if formatted_df is None or len(formatted_df) == 0:
                 return False, "结果格式化失败"
             
-            # 5. 保存结果
-            save_success = self.result_processor.save_etf_results(formatted_df, etf_code, threshold_type)
+            # 5. 格式化并保存结果
+            save_success = self.result_processor.save_single_etf_result(
+                formatted_df, etf_code, threshold_type
+            )
             if not save_success:
                 return False, "结果保存失败"
             

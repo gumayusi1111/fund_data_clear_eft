@@ -95,16 +95,33 @@ class MACDDataProcessor:
             清洗后的DataFrame
         """
         try:
+            # 中文列名映射到英文
+            column_mapping = {
+                '日期': 'Date',
+                '开盘价': 'Open', 
+                '最高价': 'High',
+                '最低价': 'Low',
+                '收盘价': 'Close',
+                '成交量(手数)': 'Volume',
+                '成交额(千元)': 'Amount'
+            }
+            
+            # 重命名列
+            df = df.rename(columns=column_mapping)
+            
             # 检查必要列
             required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
             missing_columns = [col for col in required_columns if col not in df.columns]
             
             if missing_columns:
                 print(f"❌ {etf_code} 缺少必要列: {missing_columns}")
+                print(f"   实际列名: {list(df.columns)}")
                 return None
             
             # 数据类型转换
-            df['Date'] = pd.to_datetime(df['Date'])
+            # 处理日期格式：20250627 -> 2025-06-27
+            df['Date'] = pd.to_datetime(df['Date'], format='%Y%m%d', errors='coerce')
+            
             for col in ['Open', 'High', 'Low', 'Close']:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
             df['Volume'] = pd.to_numeric(df['Volume'], errors='coerce')
@@ -148,9 +165,17 @@ class MACDDataProcessor:
         Returns:
             符合条件的ETF代码列表
         """
+        # 修复筛选文件路径计算 - 找到项目根目录
+        project_root = self.config.base_path
+        while not os.path.basename(project_root) == 'data_clear':
+            parent = os.path.dirname(project_root)
+            if parent == project_root:  # 已经到达根目录
+                break
+            project_root = parent
+        
         # 读取筛选后的ETF列表
         filter_file_path = os.path.join(
-            os.path.dirname(self.config.base_path),
+            project_root,
             "ETF_初筛", "data", threshold_type, "通过筛选ETF.txt"
         )
         
@@ -160,8 +185,13 @@ class MACDDataProcessor:
             return self.get_available_etf_files()
         
         try:
+            qualified_etfs = []
             with open(filter_file_path, 'r', encoding='utf-8') as f:
-                qualified_etfs = [line.strip() for line in f if line.strip()]
+                for line in f:
+                    line = line.strip()
+                    # 跳过空行和注释行（以#开头）
+                    if line and not line.startswith('#'):
+                        qualified_etfs.append(line)
             
             print(f"📋 {threshold_type}: 发现 {len(qualified_etfs)} 个符合条件的ETF")
             return qualified_etfs

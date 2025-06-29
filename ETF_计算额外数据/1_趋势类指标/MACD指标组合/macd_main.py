@@ -40,6 +40,7 @@ def print_welcome_banner():
 def print_menu():
     """打印菜单选项"""
     print("📋 功能菜单:")
+    print("0️⃣  批量生成所有配置数据 🔥 (推荐)")
     print("1️⃣  处理3000万门槛ETF (标准参数)")
     print("2️⃣  处理5000万门槛ETF (标准参数)")
     print("3️⃣  处理3000万门槛ETF (敏感参数)")
@@ -58,10 +59,14 @@ def main():
     
     while True:
         print_menu()
-        choice = input("请选择功能 (1-9): ").strip()
+        choice = input("请选择功能 (0-9): ").strip()
         
         try:
-            if choice == '1':
+            if choice == '0':
+                # 批量生成所有配置数据
+                batch_generate_all_configs()
+                
+            elif choice == '1':
                 # 3000万门槛 - 标准参数
                 print("🚀 开始处理3000万门槛ETF (标准参数)...")
                 controller = MACDController('standard')
@@ -131,7 +136,7 @@ def main():
                 break
                 
             else:
-                print("❌ 无效选择，请输入1-9之间的数字")
+                print("❌ 无效选择，请输入0-9之间的数字")
                 continue
                 
         except KeyboardInterrupt:
@@ -171,6 +176,56 @@ def quick_test():
         
     except Exception as e:
         print(f"❌ 快速测试失败: {e}")
+
+
+def batch_generate_all_configs():
+    """批量生成所有配置的MACD数据"""
+    print("🚀 开始批量生成所有配置的MACD数据...")
+    print("=" * 70)
+    
+    # 配置参数组合
+    configs = [
+        ('standard', '标准参数(12,26,9)'),
+        ('sensitive', '敏感参数(8,17,9)'),
+        ('smooth', '平滑参数(19,39,9)')
+    ]
+    
+    thresholds = ['3000万门槛', '5000万门槛']
+    
+    total_tasks = len(configs) * len(thresholds)
+    current_task = 0
+    
+    print(f"📊 总共需要处理 {total_tasks} 个任务")
+    print("=" * 70)
+    
+    for config_name, config_desc in configs:
+        for threshold in thresholds:
+            current_task += 1
+            print(f"\n🔄 [{current_task}/{total_tasks}] 处理 {threshold} - {config_desc}")
+            print("-" * 60)
+            
+            try:
+                controller = MACDController(config_name)
+                result = controller.process_by_threshold(threshold)
+                
+                if result.get('error'):
+                    print(f"❌ 失败: {result['error']}")
+                else:
+                    success_count = result.get('successful_etfs', 0)
+                    total_count = result.get('total_etfs', 0)
+                    print(f"✅ 完成: {success_count}/{total_count} 个ETF处理成功")
+                    
+            except Exception as e:
+                print(f"❌ 处理异常: {e}")
+            
+            print("-" * 60)
+    
+    print("\n" + "=" * 70)
+    print("🎉 批量生成完成！")
+    print("📁 数据已保存到以下目录:")
+    print("   - data/3000万门槛/ (包含标准、敏感、平滑三种参数)")
+    print("   - data/5000万门槛/ (包含标准、敏感、平滑三种参数)")
+    print("=" * 70)
 
 
 if __name__ == "__main__":

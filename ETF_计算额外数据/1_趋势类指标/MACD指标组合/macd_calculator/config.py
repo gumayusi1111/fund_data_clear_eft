@@ -102,10 +102,20 @@ class MACDConfig:
         self.current_params = self.PARAMETER_SETS[parameter_set]
         self.adj_type = "前复权"  # 默认使用前复权
         
-        # 设置基础路径
+        # 设置基础路径 - 修复路径计算
         self.base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # 找到项目根目录 (data_clear)
+        project_root = self.base_path
+        while not os.path.basename(project_root) == 'data_clear':
+            parent = os.path.dirname(project_root)
+            if parent == project_root:  # 已经到达根目录
+                break
+            project_root = parent
+        
+        # 设置数据源路径指向项目根目录下的ETF日更
         self.data_source_path = os.path.join(
-            os.path.dirname(self.base_path), 
+            project_root, 
             "ETF日更", 
             self.ADJ_TYPES[self.adj_type]
         )

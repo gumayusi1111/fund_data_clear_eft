@@ -41,15 +41,23 @@ class MACDResultProcessor:
         print("🚫 已移除: 交易建议、信号分析等主观判断")
     
     def _ensure_output_directories(self):
-        """确保输出目录存在"""
-        directories = [
-            os.path.join(self.base_output_dir, "3000万门槛"),
-            os.path.join(self.base_output_dir, "5000万门槛")
-        ]
-        
-        for directory in directories:
-            os.makedirs(directory, exist_ok=True)
-            print(f"📁 确保目录存在: {directory}")
+        """确保输出目录结构存在"""
+        try:
+            # 创建主输出目录
+            os.makedirs(self.base_output_dir, exist_ok=True)
+            
+            # 创建门槛类型目录，每个门槛下按参数类型分子目录
+            thresholds = ["3000万门槛", "5000万门槛"]
+            parameter_types = ["标准", "敏感", "平滑"]
+            
+            for threshold in thresholds:
+                for param_type in parameter_types:
+                    threshold_param_dir = os.path.join(self.base_output_dir, threshold, param_type)
+                    os.makedirs(threshold_param_dir, exist_ok=True)
+                    print(f"📁 确保目录存在: {threshold_param_dir}")
+                    
+        except Exception as e:
+            print(f"❌ 创建输出目录失败: {e}")
     
     def format_macd_results(self, df: pd.DataFrame, etf_code: str) -> pd.DataFrame:
         """
@@ -119,12 +127,13 @@ class MACDResultProcessor:
             print(f"⚠️ 添加客观特征失败: {e}")
             return df
     
-    def save_etf_results(self, df: pd.DataFrame, etf_code: str, threshold_type: str = "3000万门槛") -> bool:
+    def save_single_etf_result(self, result_df: pd.DataFrame, etf_code: str, 
+                              threshold_type: str = "3000万门槛") -> bool:
         """
-        保存单个ETF的MACD结果
+        保存单个ETF的MACD结果到对应参数类型的子目录
         
         Args:
-            df: 格式化后的结果DataFrame
+            result_df: 格式化的结果DataFrame
             etf_code: ETF代码
             threshold_type: 门槛类型
             
@@ -132,17 +141,30 @@ class MACDResultProcessor:
             是否保存成功
         """
         try:
-            output_dir = os.path.join(self.base_output_dir, threshold_type)
-            output_file = os.path.join(output_dir, f"{etf_code}.csv")
+            # 根据配置参数类型确定子目录
+            parameter_mapping = {
+                'standard': '标准',
+                'sensitive': '敏感', 
+                'smooth': '平滑'
+            }
             
-            # 保存CSV文件
-            df.to_csv(output_file, index=False, encoding='utf-8-sig')
+            param_type = parameter_mapping.get(self.config.parameter_set, '标准')
+            
+            # 构建保存路径：门槛类型/参数类型/ETF文件
+            output_subdir = os.path.join(self.base_output_dir, threshold_type, param_type)
+            output_file = os.path.join(output_subdir, f"{etf_code}.csv")
+            
+            # 确保目录存在
+            os.makedirs(output_subdir, exist_ok=True)
+            
+            # 保存文件
+            result_df.to_csv(output_file, index=False, encoding='utf-8-sig')
             
             print(f"💾 {etf_code} 结果已保存: {output_file}")
             return True
             
         except Exception as e:
-            print(f"❌ {etf_code} 结果保存失败: {e}")
+            print(f"❌ {etf_code} 保存失败: {e}")
             return False
     
     def batch_save_results(self, results_dict: Dict[str, pd.DataFrame], 
@@ -165,7 +187,7 @@ class MACDResultProcessor:
         for i, (etf_code, df) in enumerate(results_dict.items(), 1):
             print(f"💾 [{i}/{len(results_dict)}] 保存 {etf_code}...", end=" ")
             
-            if self.save_etf_results(df, etf_code, threshold_type):
+            if self.save_single_etf_result(df, etf_code, threshold_type):
                 save_status[etf_code] = "成功"
                 success_count += 1
                 print("✅")
